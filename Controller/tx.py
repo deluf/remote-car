@@ -1,8 +1,8 @@
 
-from PIL import Image
-import numpy as np
-import serial
-import cv2
+from PIL import Image       # pyright: ignore[reportMissingImports, reportMissingModuleSource]
+import numpy as np          # pyright: ignore[reportMissingImports, reportMissingModuleSource]
+import serial               # pyright: ignore[reportMissingImports, reportMissingModuleSource]
+import cv2                  # pyright: ignore[reportMissingImports, reportMissingModuleSource]
 from time import time, sleep
 
 from config import *

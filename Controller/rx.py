@@ -1,7 +1,8 @@
 
-import serial
-import numpy as np
-import matplotlib.pyplot as plt
+import serial                   # pyright: ignore[reportMissingImports, reportMissingModuleSource]
+import numpy as np              # pyright: ignore[reportMissingImports, reportMissingModuleSource]
+import matplotlib.pyplot as plt # pyright: ignore[reportMissingImports, reportMissingModuleSource]
+import matplotlib.patheffects   # pyright: ignore[reportMissingImports, reportMissingModuleSource]
 from time import time
 import sys
 
@@ -15,10 +16,26 @@ total_bytes = image_size[0] * image_size[1]
 image_buffer = np.zeros(total_bytes, dtype=np.uint8)
 
 plt.ion()
-fig, ax = plt.subplots()
+plt.rc('font', family='serif')
+fig, ax = plt.subplots(figsize=(5, 5))
 img_display = ax.imshow(np.zeros(image_size), cmap='gray', vmin=0, vmax=255)
 ax.axis('off')
-plt.title(f"{SQUARE_IMAGE_SIDE_LENGTH}x{SQUARE_IMAGE_SIDE_LENGTH} grayscale stream")
+fps_text = ax.text(
+    0.75, 0.05, "", transform=ax.transAxes,
+    fontsize=13, fontweight='bold', fontfamily='Courier New', 
+    ha="center", va="center",
+    color='white', path_effects=[ matplotlib.patheffects.withStroke(linewidth=2, foreground='black') ]
+)
+bandwidth_text = ax.text(
+    0.25, 0.05, "", transform=ax.transAxes,
+    fontsize=13, fontweight='bold', fontfamily='Courier New',
+    ha="center", va="center",
+    color='white', path_effects=[ matplotlib.patheffects.withStroke(linewidth=2, foreground='black') ]
+)
+ax.set_title(
+    f"Streaming at {SQUARE_IMAGE_SIDE_LENGTH}x{SQUARE_IMAGE_SIDE_LENGTH} [grayscale, lossless]",
+    fontsize=13, pad=10
+)
 plt.show()
 
 frame_times = []
@@ -37,8 +54,14 @@ def wait_for_start_sequence(ser):
 def update_stats():
     mean_frame_time_ms = np.mean(frame_times)
     std_frame_times_ms = np.std(frame_times)
-    mean_bandwidth_Kbps = total_bytes * 8 / np.mean(frame_times)
+    mean_bandwidth_Kbps = total_bytes * 8 / mean_frame_time_ms
     theo_max_bandwidth_Kbps = BAUD_RATE * 0.8 / 1000
+
+    mean_frame_time_recent_ms = np.mean(frame_times[-10:]) if len(frame_times) >= 10 else mean_frame_time_ms
+    mean_bandwidth_recent_Kbps = total_bytes * 8 / mean_frame_time_recent_ms
+
+    fps_text.set_text(f"{1000 / mean_frame_time_recent_ms:.2f} FPS")
+    bandwidth_text.set_text(f"{mean_bandwidth_recent_Kbps:.2f} Kbps")
 
     # Move the cursor up 3 lines and clear them
     sys.stdout.write("\033[F\033[K" * 3)  # ANSI escape: \033[F moves up, \033[K clears line
