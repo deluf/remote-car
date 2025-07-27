@@ -1,6 +1,8 @@
 
 BAUD_RATE = 2000000
 SQUARE_IMAGE_SIDE_LENGTH = 64
+TRANSMITTER_SERIAL = "/dev/cu.usbmodem11401"
+RECEIVER_SERIAL = "/dev/cu.usbserial-11120"
 
 PHY_BLOCK_SIZE = 32
 START_SEQUENCE = bytearray([i for i in range(PHY_BLOCK_SIZE)])

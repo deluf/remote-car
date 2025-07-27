@@ -5,10 +5,7 @@ import matplotlib.pyplot as plt # pyright: ignore[reportMissingImports, reportMi
 import matplotlib.patheffects   # pyright: ignore[reportMissingImports, reportMissingModuleSource]
 from time import time
 import sys
-
 from config import *
-
-SERIAL_PORT = "/dev/cu.usbserial-11120"
 
 # Setup
 image_size = (SQUARE_IMAGE_SIDE_LENGTH, SQUARE_IMAGE_SIDE_LENGTH)
@@ -95,7 +92,7 @@ def stream_frame():
     update_stats()
 
 try:
-    with serial.Serial(SERIAL_PORT, BAUD_RATE, rtscts=True) as ser:
+    with serial.Serial(RECEIVER_SERIAL, BAUD_RATE, rtscts=True) as ser:
         while True:
             stream_frame()
 except KeyboardInterrupt:

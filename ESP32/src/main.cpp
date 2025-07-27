@@ -1,11 +1,13 @@
 
-#include <Arduino.h>
 #include <SPI.h>
 #include <RF24.h>
 #include <nRF24L01.h>
 
-#define CE_PIN 9
-#define CSN_PIN 10
+/* Only change these three settings */
+#define CE_PIN 2
+#define CSN_PIN 4
+#define RECEIVER
+
 #define BLOCK_SIZE 32
 #define BAUD_RATE 2000000
 
@@ -27,16 +29,21 @@ void setup()
 
 	radio.setPALevel(RF24_PA_LOW);        	// FIXME: Set to MAX for production
 	radio.setDataRate(RF24_2MBPS);         	// Options: RF24_250KBPS, RF24_1MBPS, RF24_2MBPS
-	radio.setPayloadSize(BLOCK_SIZE);		// Maximum is 32 bytes
-	radio.setChannel(100);                 	// Between 0 and 124
+	radio.setPayloadSize(BLOCK_SIZE);		
+	radio.setChannel(100);                 	// Between 0 and 125, ~> 100 to avoid WiFi frequencies
 
+#ifdef TRANSMITTER
 	radio.openWritingPipe(address);
 	radio.stopListening();
-	//Serial.println("nRF24L01+ module initialized as transmitter");
+#else
+	radio.openReadingPipe(0, address);
+	radio.startListening();
+#endif
 }
 
 void loop() 
 {
+#ifdef TRANSMITTER
     while (Serial.available() < BLOCK_SIZE) { ; }
 	Serial.readBytes(serial_buffer, BLOCK_SIZE);
 
@@ -51,13 +58,19 @@ void loop()
 			radio.ce(LOW);
 			radio.clearStatusFlags(RF24_TX_DF);
 			radio.ce(HIGH);
-			if (failures >= 5) {
-				//Serial.println("Too many failures detected. Aborting");
+			if (failures >= 20) {
+				Serial.println("Too many failures detected. Aborting");
 				break;
 			}
         }
         // Else the TX FIFO is full => just continue loop
     }
-	//Serial.println("Succesfully sent a block!");
     //unsigned long end_timer = micros();
+#else
+	if (!radio.available()) { return; }
+	radio.read(&serial_buffer, BLOCK_SIZE);
+	
+	while (Serial.availableForWrite() < BLOCK_SIZE) { ; }
+	Serial.write(serial_buffer, BLOCK_SIZE);
+#endif
 }

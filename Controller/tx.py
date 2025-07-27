@@ -4,9 +4,7 @@ import numpy as np          # pyright: ignore[reportMissingImports, reportMissin
 import serial               # pyright: ignore[reportMissingImports, reportMissingModuleSource]
 import cv2                  # pyright: ignore[reportMissingImports, reportMissingModuleSource]
 from time import time, sleep
-
 from config import *
-SERIAL_PORT = "/dev/cu.usbmodem11401"
 
 def process_frame(frame):
     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -43,10 +41,11 @@ while cap.isOpened():
 cap.release()
 print(f"Preloaded {len(preloaded_frames)} frames")
 
+
 # Open the serial connection
 frames_sent = 0
-with serial.Serial(SERIAL_PORT, BAUD_RATE, rtscts=True) as ser:
-    sleep(3)  # Wait for the microcontroller to reboot
+with serial.Serial(TRANSMITTER_SERIAL, BAUD_RATE, rtscts=True) as ser:
+    sleep(3)
 
     start_time = time()
     while(True):    
@@ -66,14 +65,3 @@ with serial.Serial(SERIAL_PORT, BAUD_RATE, rtscts=True) as ser:
 
     print(f"Total elapsed time: {time() - start_time:.2f} [Expected {frame_count / fps:.2f}]")
     print(f"Dropped {(frame_count - frames_sent) / frame_count * 100:.2f}% of the frames")
-
-#print(f"Image: {SQUARE_IMAGE_SIDE_LENGTH}x{SQUARE_IMAGE_SIDE_LENGTH} pixels")
-#print(f"Payload Size: {len(image_bytes)} bytes")
-#print(f"Attempting to transmit via {SERIAL_PORT} at {BAUD_RATE} baud")
-
-# Theoretical ETA assuming the serial connection is the bottleneck
-# Assumes a standard 10 bits per byte (1 start, 8 data, 1 stop)
-#total_bytes = len(START_SEQUENCE) + len(image_bytes)
-#theoretical_eta_s = total_bytes / (BAUD_RATE / 10) 
-#print(f"Theoretical ETA: {theoretical_eta_s * 1000:.2f} ms")
-#print(f"Theoretical Max FPS: {1 / theoretical_eta_s:.2f}")
