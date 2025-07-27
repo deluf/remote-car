@@ -1,0 +1,7 @@
+
+BAUD_RATE = 2000000
+SQUARE_IMAGE_SIDE_LENGTH = 64
+
+PHY_BLOCK_SIZE = 32
+START_SEQUENCE = bytearray([i for i in range(PHY_BLOCK_SIZE)])
+END_SEQUENCE = bytearray([PHY_BLOCK_SIZE - i for i in range(PHY_BLOCK_SIZE)])
