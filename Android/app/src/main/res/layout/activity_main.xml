@@ -108,9 +108,9 @@
         android:text="Logs"
         android:textAppearance="@style/TextAppearance.AppCompat.Medium"
         android:textStyle="bold"
+        android:visibility="gone"
         app:layout_constraintStart_toStartOf="@+id/textview_logs_monitor"
-        app:layout_constraintTop_toBottomOf="@+id/start_application"
-        tools:visibility="gone" />
+        app:layout_constraintTop_toBottomOf="@+id/start_application" />
 
     <TextView
         android:id="@+id/textview_logs_monitor"
@@ -124,21 +124,10 @@
         android:fontFamily="monospace"
         android:padding="6dp"
         android:scrollbars="vertical"
-        app:layout_constraintBottom_toTopOf="@+id/texture_view_camera"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/textview_logs_monitor_label" />
-
-    <TextureView
-        android:id="@+id/texture_view_camera"
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        app:layout_constraintBottom_toTopOf="@+id/textview_serial_monitor_label"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/textview_serial_monitor_label"
@@ -148,9 +137,9 @@
         android:text="Serial monitor"
         android:textAppearance="@style/TextAppearance.AppCompat.Medium"
         android:textStyle="bold"
+        android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@+id/textview_serial_monitor"
-        app:layout_constraintStart_toStartOf="@+id/textview_serial_monitor"
-        tools:visibility="gone" />
+        app:layout_constraintStart_toStartOf="@+id/textview_serial_monitor" />
 
     <TextView
         android:id="@+id/textview_serial_monitor"
@@ -178,10 +167,10 @@
         android:layout_marginBottom="16dp"
         android:hint="Write message"
         android:inputType="text"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/button_send_to_serial"
-        app:layout_constraintStart_toStartOf="parent"
-        tools:visibility="gone" />
+        app:layout_constraintStart_toStartOf="parent" />
 
     <Button
         android:id="@+id/button_send_to_serial"
@@ -190,9 +179,9 @@
         android:layout_height="0dp"
         android:layout_marginEnd="16dp"
         android:text="Send"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@+id/edittext_send_to_serial"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/edittext_send_to_serial"
-        tools:visibility="gone" />
+        app:layout_constraintTop_toTopOf="@+id/edittext_send_to_serial" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

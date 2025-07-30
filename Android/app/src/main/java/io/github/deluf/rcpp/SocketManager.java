@@ -188,7 +188,6 @@ public class SocketManager {
             try {
                 DatagramPacket packet = new DatagramPacket(data, data.length, streamAddress);
                 streamSocket.send(packet);
-                activity.logMessage(LogType.INFO, "Sent " + data.length + " bytes of stream data");
             } catch (IOException e) {
                 activity.logMessage(LogType.ERROR, "Failed to send stream data: " + e.getMessage());
                 scheduleStreamReconnect();
@@ -213,7 +212,6 @@ public class SocketManager {
                 telemetryWriter.println(telemetryData);
                 if (telemetryWriter.checkError())
                     throw new IOException("telemetryWriter check error");
-                activity.logMessage(LogType.INFO, "Sent telemetry data: " + telemetryData);
             } catch (Exception e) {
                 activity.logMessage(LogType.ERROR, "Failed to send telemetry data: " + e.getMessage());
                 scheduleTelemetryReconnect();

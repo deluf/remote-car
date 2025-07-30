@@ -40,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText serialInput;
     private Button sendToSerialButton;
     private Button startApplicationButton;
+    private StreamCameraManager streamCameraManager;
 
     // Application logic
     private ControllerManager controllerManager;
@@ -50,7 +51,8 @@ public class MainActivity extends AppCompatActivity {
      * TODO:
      * maybe log -> errorLog [sezione ----- DEBUG -----]
      * maybe different screens at this point
-     * handle socket errors
+     *
+     * handle the annoying scroll when you want to see things above
      */
 
     @Override
@@ -63,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
         controllerManager = new ControllerManager(this, CONTROLLER_IP);
         serialManager = new SerialManager(this, DEFAULT_BAUD_RATE);
         socketManager = new SocketManager(this, CONTROLLER_IP);
+        streamCameraManager = new StreamCameraManager(this, socketManager);
     }
 
     private void initViews() {
@@ -143,11 +146,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startApplication() {
+        streamCameraManager.startStreaming();
+
+        /*
         socketManager.sendTelemetry("TEL.DUMMY");
 
         byte[] data = new byte[1];
         data[0] = 0x01;
         socketManager.sendStream(data);
+         */
     }
 
     enum LogType {
@@ -217,11 +224,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        streamCameraManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         controllerManager.destroyControllerMonitoring();
         serialManager.closeSerialPort();
         socketManager.destroy();
+        streamCameraManager.destroy();
     }
 
     @Override
