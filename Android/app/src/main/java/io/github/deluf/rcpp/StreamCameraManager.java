@@ -10,6 +10,7 @@ import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
@@ -17,6 +18,7 @@ import android.media.ImageReader;
 import android.os.Handler;
 import android.os.HandlerThread;
 
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 
 import java.io.ByteArrayOutputStream;
@@ -36,7 +38,7 @@ public class StreamCameraManager {
 
     private final MainActivity activity;
     private final SocketManager socketManager;
-    private final android.hardware.camera2.CameraManager cameraManager;
+    private final CameraManager cameraManager;
 
     private String cameraId;
     private CameraDevice cameraDevice;
@@ -54,7 +56,7 @@ public class StreamCameraManager {
     public StreamCameraManager(MainActivity activity, SocketManager socketManager) {
         this.activity = activity;
         this.socketManager = socketManager;
-        this.cameraManager = (android.hardware.camera2.CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
+        this.cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
     }
 
     public void startStreaming() {
@@ -138,7 +140,7 @@ public class StreamCameraManager {
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override
-        public void onOpened(CameraDevice camera) {
+        public void onOpened(@NonNull CameraDevice camera) {
             cameraOpenCloseLock.release();
             cameraDevice = camera;
             createCaptureSession();

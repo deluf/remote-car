@@ -1,5 +1,6 @@
 package io.github.deluf.rcpp;
 
+import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
@@ -15,8 +16,10 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+@SuppressLint("SetTextI18n")
 public class MainActivity extends AppCompatActivity {
 
     // Constants
@@ -47,7 +50,7 @@ public class MainActivity extends AppCompatActivity {
     private SerialManager serialManager;
     private SocketManager socketManager;
 
-    /**
+    /*
      * TODO:
      * maybe log -> errorLog [sezione ----- DEBUG -----]
      * maybe different screens at this point
@@ -224,7 +227,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         streamCameraManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
