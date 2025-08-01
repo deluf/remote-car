@@ -1,3 +1,4 @@
+
 package io.github.deluf.rcpp;
 
 import java.io.BufferedReader;
@@ -19,53 +20,77 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import io.github.deluf.rcpp.MainActivity.LogType;
 
 public class SocketManager {
-    private static final int STREAM_PORT = 8001;      // UDP port for video/audio streaming
-    private static final int TELEMETRY_PORT = 8002;   // TCP port for telemetry data
-    private static final int CONTROL_PORT = 8003;     // TCP port for control commands
+    private static final int VIDEO_STREAM_PORT = 8001;
+    private static final int AUDIO_STREAM_PORT = 8002;
+    private static final int TELEMETRY_PORT = 8003;
+    private static final int CONTROL_PORT = 8004;
     private static final int RECONNECT_DELAY_MS = 10000;
     private static final int SOCKET_READ_TIMEOUT_MS = 1000;
 
     private final MainActivity activity;
     private final String controllerIP;
-    private volatile DatagramSocket streamSocket;
+
+    private volatile DatagramSocket videoStreamSocket;
+    private volatile DatagramSocket audioStreamSocket;
+    private volatile InetSocketAddress videoStreamAddress;
+    private volatile InetSocketAddress audioStreamAddress;
+
     private volatile Socket telemetrySocket;
     private volatile Socket controlSocket;
-    private volatile InetSocketAddress streamAddress;
     private volatile PrintWriter telemetryWriter;
     private volatile BufferedReader controlReader;
+
     private final ExecutorService executorService;
     private final ScheduledExecutorService reconnectExecutor;
-    private final AtomicBoolean isControlListening = new AtomicBoolean(false);
-    private final AtomicBoolean streamReconnecting = new AtomicBoolean(false);
+
+    private final AtomicBoolean videoStreamReconnecting = new AtomicBoolean(false);
+    private final AtomicBoolean audioStreamReconnecting = new AtomicBoolean(false);
     private final AtomicBoolean telemetryReconnecting = new AtomicBoolean(false);
     private final AtomicBoolean controlReconnecting = new AtomicBoolean(false);
+    private final AtomicBoolean isControlListening = new AtomicBoolean(false);
 
     public SocketManager(MainActivity activity, String controllerIP) {
         this.activity = activity;
         this.controllerIP = controllerIP;
         this.executorService = Executors.newCachedThreadPool();
-        this.reconnectExecutor = Executors.newScheduledThreadPool(3);
+        this.reconnectExecutor = Executors.newScheduledThreadPool(4);
         initializeSockets();
     }
 
     void initializeSockets() {
         executorService.execute(() -> {
-            initializeStreamSocket();
+            initializeVideoStreamSocket();
+            initializeAudioStreamSocket();
             initializeTelemetrySocket();
             initializeControlSocket();
         });
     }
 
-    private void initializeStreamSocket() {
+    private void initializeVideoStreamSocket() {
         try {
             InetAddress address = InetAddress.getByName(controllerIP);
-            streamSocket = new DatagramSocket();
-            streamAddress = new InetSocketAddress(address, STREAM_PORT);
-            streamReconnecting.set(false);
+            videoStreamSocket = new DatagramSocket();
+            videoStreamAddress = new InetSocketAddress(address, VIDEO_STREAM_PORT);
+            activity.logMessage(LogType.FAIL_SAFE, "Video stream socket initialized");
+            videoStreamReconnecting.set(false);
         } catch (IOException e) {
-            activity.logMessage(LogType.ERROR, "Stream socket error: " + e.getMessage());
-            streamReconnecting.set(false);
-            scheduleStreamReconnect();
+            activity.logMessage(LogType.ERROR, "Video stream socket error: " + e.getMessage());
+            videoStreamReconnecting.set(false);
+            scheduleVideoStreamReconnect();
+        }
+    }
+
+    private void initializeAudioStreamSocket() {
+        try {
+            InetAddress address = InetAddress.getByName(controllerIP);
+            audioStreamSocket = new DatagramSocket();
+            audioStreamAddress = new InetSocketAddress(address, AUDIO_STREAM_PORT);
+            activity.logMessage(LogType.FAIL_SAFE, "Audio stream socket initialized");
+            audioStreamReconnecting.set(false);
+        } catch (IOException e) {
+            activity.logMessage(LogType.ERROR, "Audio stream socket error: " + e.getMessage());
+            audioStreamReconnecting.set(false);
+            scheduleAudioStreamReconnect();
         }
     }
 
@@ -74,6 +99,7 @@ public class SocketManager {
             InetAddress address = InetAddress.getByName(controllerIP);
             telemetrySocket = new Socket(address, TELEMETRY_PORT);
             telemetryWriter = new PrintWriter(telemetrySocket.getOutputStream(), true);
+            activity.logMessage(LogType.FAIL_SAFE, "Telemetry socket initialized");
             telemetryReconnecting.set(false);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
@@ -89,6 +115,7 @@ public class SocketManager {
             controlSocket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
             controlReader = new BufferedReader(new InputStreamReader(controlSocket.getInputStream()));
             startControlListener();
+            activity.logMessage(LogType.FAIL_SAFE, "Control socket initialized");
             controlReconnecting.set(false);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
@@ -109,7 +136,7 @@ public class SocketManager {
                         if (command == null) break;
                         handleIncomingCommand(command);
                     } catch (SocketTimeoutException e) {
-                        // Timeout is expected, continue loop to check socket state
+                        // A timeout is expected, continue the loop to check the socket's state
                     }
                 }
             } catch (IOException e) {
@@ -120,10 +147,16 @@ public class SocketManager {
         });
     }
 
-    private void scheduleStreamReconnect() {
-        if (!streamReconnecting.compareAndSet(false, true)) return;
-        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to stream socket...");
-        reconnectExecutor.schedule(this::initializeStreamSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
+    private void scheduleVideoStreamReconnect() {
+        if (!videoStreamReconnecting.compareAndSet(false, true)) return;
+        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to video stream socket...");
+        reconnectExecutor.schedule(this::initializeVideoStreamSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void scheduleAudioStreamReconnect() {
+        if (!audioStreamReconnecting.compareAndSet(false, true)) return;
+        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to audio stream socket...");
+        reconnectExecutor.schedule(this::initializeAudioStreamSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     private void scheduleTelemetryReconnect() {
@@ -147,21 +180,12 @@ public class SocketManager {
 
         executorService.execute(() -> {
             try {
-                if (controlReader != null) {
-                    controlReader.close();
-                }
-                if (controlSocket != null) {
-                    controlSocket.close();
-                }
-                if (telemetryWriter != null) {
-                    telemetryWriter.close();
-                }
-                if (telemetrySocket != null) {
-                    telemetrySocket.close();
-                }
-                if (streamSocket != null) {
-                    streamSocket.close();
-                }
+                if (controlReader != null) controlReader.close();
+                if (controlSocket != null) controlSocket.close();
+                if (telemetryWriter != null) telemetryWriter.close();
+                if (telemetrySocket != null) telemetrySocket.close();
+                if (videoStreamSocket != null) videoStreamSocket.close();
+                if (audioStreamSocket != null) audioStreamSocket.close();
             } catch (IOException e) {
                 activity.logMessage(LogType.ERROR, "Error destroying sockets: " + e.getMessage());
             }
@@ -172,10 +196,10 @@ public class SocketManager {
         }
     }
 
-    public void sendStream(byte[] data) {
-        if (streamSocket == null || streamSocket.isClosed() || streamAddress == null) {
-            if (!streamReconnecting.get()) {
-                scheduleStreamReconnect();
+    void sendVideoStream(byte[] data) {
+        if (videoStreamSocket == null || videoStreamSocket.isClosed() || videoStreamAddress == null) {
+            if (!videoStreamReconnecting.get()) {
+                scheduleVideoStreamReconnect();
             }
             return;
         }
@@ -186,11 +210,34 @@ public class SocketManager {
 
         executorService.execute(() -> {
             try {
-                DatagramPacket packet = new DatagramPacket(data, data.length, streamAddress);
-                streamSocket.send(packet);
+                DatagramPacket packet = new DatagramPacket(data, data.length, videoStreamAddress);
+                videoStreamSocket.send(packet);
             } catch (IOException e) {
-                activity.logMessage(LogType.ERROR, "Failed to send stream data: " + e.getMessage());
-                scheduleStreamReconnect();
+                activity.logMessage(LogType.ERROR, "Failed to send video stream data: " + e.getMessage());
+                scheduleVideoStreamReconnect();
+            }
+        });
+    }
+
+    void sendAudioStream(byte[] data) {
+        if (audioStreamSocket == null || audioStreamSocket.isClosed() || audioStreamAddress == null) {
+            if (!audioStreamReconnecting.get()) {
+                scheduleAudioStreamReconnect();
+            }
+            return;
+        }
+
+        if (data == null || data.length == 0) {
+            return;
+        }
+
+        executorService.execute(() -> {
+            try {
+                DatagramPacket packet = new DatagramPacket(data, data.length, audioStreamAddress);
+                audioStreamSocket.send(packet);
+            } catch (IOException e) {
+                activity.logMessage(LogType.ERROR, "Failed to send audio stream data: " + e.getMessage());
+                scheduleAudioStreamReconnect();
             }
         });
     }
@@ -210,8 +257,7 @@ public class SocketManager {
         executorService.execute(() -> {
             try {
                 telemetryWriter.println(telemetryData);
-                if (telemetryWriter.checkError())
-                    throw new IOException("telemetryWriter check error");
+                if (telemetryWriter.checkError()) throw new IOException("telemetryWriter check error");
             } catch (Exception e) {
                 activity.logMessage(LogType.ERROR, "Failed to send telemetry data: " + e.getMessage());
                 scheduleTelemetryReconnect();
