@@ -24,7 +24,7 @@ public class SocketManager {
     private static final int AUDIO_STREAM_PORT = 8002;
     private static final int TELEMETRY_PORT = 8003;
     private static final int CONTROL_PORT = 8004;
-    private static final int RECONNECT_DELAY_MS = 10000;
+    private static final int RECONNECT_DELAY_MS = 3000;
     private static final int SOCKET_READ_TIMEOUT_MS = 1000;
 
     private final MainActivity activity;
@@ -100,7 +100,9 @@ public class SocketManager {
             activity.updateTelemetrySocketStatus(true);
             telemetryReconnecting.set(false);
         } catch (IOException e) {
-            activity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
+            if (isUnknownSocketError(e)) {
+                activity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
+            }
             telemetryReconnecting.set(false);
             scheduleTelemetryReconnect();
         }
@@ -116,10 +118,17 @@ public class SocketManager {
             activity.updateControlSocketStatus(true);
             controlReconnecting.set(false);
         } catch (IOException e) {
-            activity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
+            if (isUnknownSocketError(e)) {
+                activity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
+            }
             controlReconnecting.set(false);
             scheduleControlReconnect();
         }
+    }
+
+    private boolean isUnknownSocketError(IOException e) {
+        return e.getMessage() == null || (!e.getMessage().contains("ETIMEDOUT")
+                && !e.getMessage().contains("ECONNREFUSED"));
     }
 
     private void startControlListener() {
@@ -255,6 +264,7 @@ public class SocketManager {
             try {
                 telemetryWriter.println(telemetryData);
                 if (telemetryWriter.checkError()) throw new IOException("telemetryWriter check error");
+                activity.logMessage(LogType.INFO, "[TELEMETRY]: " + telemetryData);
             } catch (Exception e) {
                 activity.logMessage(LogType.ERROR, "Failed to send telemetry data: " + e.getMessage());
                 scheduleTelemetryReconnect();
@@ -266,6 +276,6 @@ public class SocketManager {
         if (command == null || command.trim().isEmpty()) {
             return;
         }
-        
+        activity.logMessage(LogType.INFO, "[CONTROL]: " + command);
     }
 }
