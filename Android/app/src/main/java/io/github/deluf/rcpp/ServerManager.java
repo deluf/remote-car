@@ -7,7 +7,7 @@ import java.net.InetAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class ControllerManager {
+public class ServerManager {
     private static final int MONITORING_INTERVAL_MS = 3000;
     private static final int REACHABILITY_TIMEOUT_MS = 1000;
 
@@ -15,9 +15,8 @@ public class ControllerManager {
     private final Runnable monitoringTask;
     private final ExecutorService monitoringExecutor;
     private boolean isControllerBeingMonitored = false;
-    private boolean isControllerOnline = false;
 
-    ControllerManager(MainActivity activity, String CONTROLLER_IP)  {
+    ServerManager(MainActivity activity, String CONTROLLER_IP)  {
         monitoringHandler = new Handler(Looper.getMainLooper());
         monitoringExecutor = Executors.newSingleThreadExecutor();
         monitoringTask = new Runnable() {
@@ -30,24 +29,17 @@ public class ControllerManager {
                             //long startTime = System.currentTimeMillis();
                             boolean reachable = address.isReachable(REACHABILITY_TIMEOUT_MS);
                             //long pingTime = System.currentTimeMillis() - startTime;
-                            isControllerOnline = reachable;
-                            activity.updateControllerStatus(reachable);
+                            activity.updateServerStatus(reachable);
                         } catch (Exception e) {
-                            isControllerOnline = false;
-                            activity.updateControllerStatus(false);
+                            activity.updateServerStatus(false);
                         }
                     });
                     monitoringHandler.postDelayed(this, MONITORING_INTERVAL_MS);
                 }
             }
         };
-
         resumeControllerMonitoring();
     }
-
-    boolean isOnline() {
-        return isControllerOnline;
-    };
 
     void resumeControllerMonitoring() {
         if (!isControllerBeingMonitored) {
@@ -63,7 +55,7 @@ public class ControllerManager {
         }
     }
 
-    void destroyControllerMonitoring() {
+    void stopControllerMonitoring() {
         pauseControllerMonitoring();
         if (monitoringExecutor != null && !monitoringExecutor.isShutdown()) {
             monitoringExecutor.shutdown();

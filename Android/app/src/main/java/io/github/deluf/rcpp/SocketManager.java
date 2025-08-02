@@ -71,7 +71,6 @@ public class SocketManager {
             InetAddress address = InetAddress.getByName(controllerIP);
             videoStreamSocket = new DatagramSocket();
             videoStreamAddress = new InetSocketAddress(address, VIDEO_STREAM_PORT);
-            activity.logMessage(LogType.FAIL_SAFE, "Video stream socket initialized");
             videoStreamReconnecting.set(false);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Video stream socket error: " + e.getMessage());
@@ -85,7 +84,6 @@ public class SocketManager {
             InetAddress address = InetAddress.getByName(controllerIP);
             audioStreamSocket = new DatagramSocket();
             audioStreamAddress = new InetSocketAddress(address, AUDIO_STREAM_PORT);
-            activity.logMessage(LogType.FAIL_SAFE, "Audio stream socket initialized");
             audioStreamReconnecting.set(false);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Audio stream socket error: " + e.getMessage());
@@ -99,7 +97,7 @@ public class SocketManager {
             InetAddress address = InetAddress.getByName(controllerIP);
             telemetrySocket = new Socket(address, TELEMETRY_PORT);
             telemetryWriter = new PrintWriter(telemetrySocket.getOutputStream(), true);
-            activity.logMessage(LogType.FAIL_SAFE, "Telemetry socket initialized");
+            activity.updateTelemetrySocketStatus(true);
             telemetryReconnecting.set(false);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
@@ -115,7 +113,7 @@ public class SocketManager {
             controlSocket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
             controlReader = new BufferedReader(new InputStreamReader(controlSocket.getInputStream()));
             startControlListener();
-            activity.logMessage(LogType.FAIL_SAFE, "Control socket initialized");
+            activity.updateControlSocketStatus(true);
             controlReconnecting.set(false);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
@@ -149,25 +147,23 @@ public class SocketManager {
 
     private void scheduleVideoStreamReconnect() {
         if (!videoStreamReconnecting.compareAndSet(false, true)) return;
-        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to video stream socket...");
         reconnectExecutor.schedule(this::initializeVideoStreamSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     private void scheduleAudioStreamReconnect() {
         if (!audioStreamReconnecting.compareAndSet(false, true)) return;
-        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to audio stream socket...");
         reconnectExecutor.schedule(this::initializeAudioStreamSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     private void scheduleTelemetryReconnect() {
         if (!telemetryReconnecting.compareAndSet(false, true)) return;
-        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to telemetry socket...");
+        activity.updateTelemetrySocketStatus(false);
         reconnectExecutor.schedule(this::initializeTelemetrySocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     private void scheduleControlReconnect() {
         if (!controlReconnecting.compareAndSet(false, true)) return;
-        activity.logMessage(LogType.FAIL_SAFE, "Reconnecting to control socket...");
+        activity.updateControlSocketStatus(false);
         isControlListening.set(false);
         reconnectExecutor.schedule(this::initializeControlSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
@@ -177,7 +173,6 @@ public class SocketManager {
             reconnectExecutor.shutdownNow();
         }
         isControlListening.set(false);
-
         executorService.execute(() -> {
             try {
                 if (controlReader != null) controlReader.close();
@@ -194,6 +189,8 @@ public class SocketManager {
         if (!executorService.isShutdown()) {
             executorService.shutdown();
         }
+        activity.updateControlSocketStatus(false);
+        activity.updateTelemetrySocketStatus(false);
     }
 
     void sendVideoStream(byte[] data) {
@@ -269,6 +266,6 @@ public class SocketManager {
         if (command == null || command.trim().isEmpty()) {
             return;
         }
-        activity.logMessage(LogType.INFO, "Received control command: " + command);
+        
     }
 }

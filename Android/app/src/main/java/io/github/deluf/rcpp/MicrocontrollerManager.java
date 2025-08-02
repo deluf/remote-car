@@ -11,7 +11,6 @@ import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
 import android.os.Build;
-import android.util.Log;
 
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
@@ -24,7 +23,7 @@ import java.util.List;
 
 import io.github.deluf.rcpp.MainActivity.LogType;
 
-public class SerialManager implements SerialInputOutputManager.Listener {
+public class MicrocontrollerManager implements SerialInputOutputManager.Listener {
     private static final String ACTION_USB_PERMISSION = "io.github.deluf.rcpp.USB_PERMISSION";
     private static final int TARGET_VENDOR_ID = 9025;   // Arduino
     private static final int TARGET_PRODUCT_ID = 67;    // UNO R3
@@ -36,7 +35,7 @@ public class SerialManager implements SerialInputOutputManager.Listener {
     private final MainActivity activity;
     private int baudRate;
 
-    SerialManager(MainActivity activity, int baudRate) {
+    MicrocontrollerManager(MainActivity activity, int baudRate) {
         this.activity = activity;
         this.baudRate = baudRate;
         usbManager = (UsbManager) activity.getSystemService(Context.USB_SERVICE);
@@ -143,7 +142,7 @@ public class SerialManager implements SerialInputOutputManager.Listener {
             serialPort.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
             ioManager = new SerialInputOutputManager(serialPort, this);
             ioManager.start();
-            activity.updateSerialStatus(true);
+            activity.updateMicrocontrollerStatus(true);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Serial connection error: " + e.getMessage());
             closeSerialPort();
@@ -164,7 +163,7 @@ public class SerialManager implements SerialInputOutputManager.Listener {
             try { serialPort.close(); } catch (IOException ignored) {}
             serialPort = null;
         }
-        activity.updateSerialStatus(false);
+        activity.updateMicrocontrollerStatus(false);
     }
 
     void sendASCII(String message) {

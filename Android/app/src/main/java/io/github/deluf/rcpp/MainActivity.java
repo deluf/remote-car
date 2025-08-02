@@ -10,10 +10,8 @@ import android.text.SpannableStringBuilder;
 import android.text.method.ScrollingMovementMethod;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -26,19 +24,20 @@ public class MainActivity extends AppCompatActivity {
     // Constants
     private static final String TARGET_DEVICE_NAME = "Arduino UNO R3";
     private static final String CONTROLLER_IP = "100.92.38.63"; // Tailscale's IP of my computer
-    private static final int DEFAULT_BAUD_RATE = 115200;
-    private static final String[] BAUD_RATES = {"9600", "19200", "38400", "57600", "115200"};
+    private static final int BAUD_RATE = 115200;
     private static final int CLEAR_MONITOR_THRESHOLD_LINES = 1000;
-    private static final int COLOR_GREEN = Color.parseColor("#4CAF50");
+    private static final int COLOR_GREEN = Color.parseColor("#439846");
     private static final int COLOR_RED = Color.parseColor("#E91E63");
     private static final int COLOR_BLUE = Color.parseColor("#03A9F4");
     private static final int COLOR_ORANGE = Color.parseColor("#AB3C19");
     private static final int COLOR_BLACK = Color.parseColor("#000000");
 
     // UI elements
-    private Spinner baudSpinner;
-    private TextView serialStatus;
-    private TextView controllerStatus;
+    private TextView microcontrollerStatus;
+    private TextView serverStatus;
+    private TextView backCameraStatus;
+    private TextView telemetrySocketStatus;
+    private TextView controlSocketStatus;
     private TextView logsMonitor;
     private TextView serialMonitor;
     private EditText serialInput;
@@ -47,14 +46,15 @@ public class MainActivity extends AppCompatActivity {
     private StreamCameraManager streamCameraManager;
 
     // Application logic
-    private ControllerManager controllerManager;
-    private SerialManager serialManager;
+    private ServerManager serverManager;
+    private MicrocontrollerManager microcontrollerManager;
     private SocketManager socketManager;
 
     /*
      * TODO:
      * maybe log -> errorLog [sezione ----- DEBUG -----]
      * maybe different screens at this point
+     * togliere tutti gli elementi di UI non usati
      *
      * handle the annoying scroll when you want to see things above
      */
@@ -65,17 +65,18 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         initViews();
-        setupBaudRatesSpinner();
-        controllerManager = new ControllerManager(this, CONTROLLER_IP);
-        serialManager = new SerialManager(this, DEFAULT_BAUD_RATE);
+        serverManager = new ServerManager(this, CONTROLLER_IP);
+        microcontrollerManager = new MicrocontrollerManager(this, BAUD_RATE);
         socketManager = new SocketManager(this, CONTROLLER_IP);
         streamCameraManager = new StreamCameraManager(this, socketManager);
     }
 
     private void initViews() {
-        baudSpinner = findViewById(R.id.spinner_baud_rate);
-        serialStatus = findViewById(R.id.textview_serial_status);
-        controllerStatus = findViewById(R.id.textview_controller_status);
+        microcontrollerStatus = findViewById(R.id.textview_serial_status);
+        serverStatus = findViewById(R.id.textview_controller_status);
+        backCameraStatus = findViewById(R.id.textview_back_camera_status);
+        telemetrySocketStatus = findViewById(R.id.textview_telemetry_socket_status);
+        controlSocketStatus = findViewById(R.id.textview_control_socket_status);
         logsMonitor = findViewById(R.id.textview_logs_monitor);
         serialMonitor = findViewById(R.id.textview_serial_monitor);
         serialInput = findViewById(R.id.edittext_send_to_serial);
@@ -90,63 +91,85 @@ public class MainActivity extends AppCompatActivity {
         sendToSerialButton.setOnClickListener(v -> sendMessageToSerial());
         startApplicationButton.setOnClickListener(v -> startApplication());
 
-        updateControllerStatus(false);
-        updateSerialStatus(false);
+        updateServerStatus(false);
+        updateMicrocontrollerStatus(false);
+        updateBackCameraStatus(false, "");
+        updateTelemetrySocketStatus(false);
+        updateControlSocketStatus(false);
     }
 
-    private void setupBaudRatesSpinner() {
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, BAUD_RATES);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        baudSpinner.setAdapter(adapter);
-
-        // Sets the selected item to the initial baudRate value
-        int defaultIndex = java.util.Arrays.asList(BAUD_RATES).indexOf(String.valueOf(DEFAULT_BAUD_RATE));
-        if (defaultIndex != -1) {
-            baudSpinner.setSelection(defaultIndex);
-        }
-
-        baudSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(android.widget.AdapterView<?> parent, android.view.View view, int pos, long id) {
-                int newBaudRate = Integer.parseInt(parent.getItemAtPosition(pos).toString());
-                serialManager.setBaudRate(newBaudRate);
-            }
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-        });
-    }
-
-    void updateControllerStatus(boolean online) {
+    void updateServerStatus(boolean reachable) {
         runOnUiThread(() -> {
-            if (online) {
-                controllerStatus.setTextColor(COLOR_GREEN);
-                controllerStatus.setText("ONLINE");
+            if (reachable) {
+                serverStatus.setTextColor(COLOR_GREEN);
+                serverStatus.setText("REACHABLE");
             } else {
-                controllerStatus.setTextColor(COLOR_RED);
-                controllerStatus.setText("OFFLINE");
+                serverStatus.setTextColor(COLOR_RED);
+                serverStatus.setText("UNREACHABLE");
             }
             //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
         });
     }
 
-    void updateSerialStatus(boolean plugged_in) {
+    void updateMicrocontrollerStatus(boolean plugged) {
         runOnUiThread(() -> {
-            if (plugged_in) {
-                serialStatus.setTextColor(COLOR_GREEN);
-                serialStatus.setText(TARGET_DEVICE_NAME);
+            if (plugged) {
+                microcontrollerStatus.setTextColor(COLOR_GREEN);
+                microcontrollerStatus.setText(TARGET_DEVICE_NAME + "@" + BAUD_RATE);
                 serialMonitor.setText("");
             } else {
-                serialStatus.setTextColor(COLOR_RED);
-                serialStatus.setText("UNPLUGGED");
+                microcontrollerStatus.setTextColor(COLOR_RED);
+                microcontrollerStatus.setText("UNPLUGGED");
             }
             //startApplication.setEnabled(plugged_in && controllerManager.isOnline()); FIXME
-            sendToSerialButton.setEnabled(plugged_in);
-            serialInput.setEnabled(plugged_in);
-            baudSpinner.setEnabled(!plugged_in);
+            sendToSerialButton.setEnabled(plugged);
+            serialInput.setEnabled(plugged);
         });
     }
 
+    void updateBackCameraStatus(boolean ready, String details) {
+        runOnUiThread(() -> {
+            if (ready) {
+                backCameraStatus.setTextColor(COLOR_GREEN);
+                backCameraStatus.setText(details);
+            } else {
+                backCameraStatus.setTextColor(COLOR_RED);
+                backCameraStatus.setText("NOT CONFIGURED");
+            }
+            //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
+        });
+    }
+
+    void updateTelemetrySocketStatus(boolean connected) {
+        runOnUiThread(() -> {
+            if (connected) {
+                telemetrySocketStatus.setTextColor(COLOR_GREEN);
+                telemetrySocketStatus.setText("CONNECTED");
+            } else {
+                telemetrySocketStatus.setTextColor(COLOR_RED);
+                telemetrySocketStatus.setText("NOT CONNECTED");
+            }
+            //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
+        });
+    }
+
+    void updateControlSocketStatus(boolean connected) {
+        runOnUiThread(() -> {
+            if (connected) {
+                controlSocketStatus.setTextColor(COLOR_GREEN);
+                controlSocketStatus.setText("CONNECTED");
+            } else {
+                controlSocketStatus.setTextColor(COLOR_RED);
+                controlSocketStatus.setText("NOT CONNECTED");
+            }
+            //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
+        });
+    }
+
+
     private void sendMessageToSerial() {
         String message = serialInput.getText().toString().trim();
-        serialManager.sendASCII(message);
+        microcontrollerManager.sendASCII(message);
     }
 
     private void startApplication() {
@@ -242,21 +265,21 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        controllerManager.destroyControllerMonitoring();
-        serialManager.closeSerialPort();
+        serverManager.stopControllerMonitoring();
+        microcontrollerManager.closeSerialPort();
         socketManager.destroy();
-        streamCameraManager.destroy();
+        streamCameraManager.stopStreaming();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        controllerManager.pauseControllerMonitoring();
+        serverManager.pauseControllerMonitoring();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        controllerManager.resumeControllerMonitoring();
+        serverManager.resumeControllerMonitoring();
     }
 }
