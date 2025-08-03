@@ -50,15 +50,6 @@ public class MainActivity extends AppCompatActivity {
     private MicrocontrollerManager microcontrollerManager;
     private SocketManager socketManager;
 
-    /*
-     * TODO:
-     * maybe log -> errorLog [sezione ----- DEBUG -----]
-     * maybe different screens at this point
-     * togliere tutti gli elementi di UI non usati
-     *
-     * handle the annoying scroll when you want to see things above
-     */
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -174,14 +165,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void startApplication() {
         streamCameraManager.startStreaming();
-
-        /*
         socketManager.sendTelemetry("TEL.DUMMY");
-
-        byte[] data = new byte[1];
-        data[0] = 0x01;
-        socketManager.sendStream(data);
-         */
+        startApplicationButton.setEnabled(false);
     }
 
     enum LogType {
