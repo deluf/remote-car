@@ -1,8 +1,8 @@
+
 import os
 os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
 
 import pygame
-import serial
 from enum import Enum, IntEnum
 
 from server import ControllerServer
@@ -53,12 +53,6 @@ last_sent_states = {
     DS4_ANALOG.R2: None,
     DS4_ANALOG.L_X: None
 }
-
-#try:
-#    ser = serial.Serial('/dev/cu.usbmodem111201', 115200, timeout=1)
-#except serial.SerialException as e:
-#    print(f"Could not open serial port: {e}")
-#    exit(1)
 
 pygame.init()
 controllerServer = ControllerServer()
@@ -128,8 +122,7 @@ def main():
                 if command is not None and should_send_command(analog_control, command, direction, speed):
                     packet = bytes([command, direction, speed])
                     controllerServer.send_command(packet)
-                    #ser.write(packet)
-                    print(f"[DEBUG] Sent: cmd={command.name}, dir={direction.name}, speed={speed:.2f} (level={level:.2f})")
+                    #print(f"[DEBUG] Sent: cmd={command.name}, dir={direction.name}, speed={speed:.2f} (level={level:.2f})")
 
             elif event.type == pygame.JOYDEVICEADDED:
                 joystick = pygame.joystick.Joystick(event.device_index)
@@ -142,12 +135,9 @@ def main():
         pygame.display.flip() # Update the screen
         clock.tick(FPS)
         
-
 if __name__ == "__main__":
-    # write touchpad to quit
     controllerServer.start()
     main() # Blocking
 
     pygame.quit()
     print("Server stopped")
-    

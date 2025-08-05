@@ -11,7 +11,6 @@ import android.text.method.ScrollingMovementMethod;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -21,10 +20,8 @@ import androidx.appcompat.app.AppCompatActivity;
 @SuppressLint("SetTextI18n")
 public class MainActivity extends AppCompatActivity {
 
-    // Constants
     private static final String TARGET_DEVICE_NAME = "Arduino UNO R3";
     private static final String CONTROLLER_IP = "100.92.38.63"; // Tailscale's IP of my computer
-    private static final int BAUD_RATE = 115200;
     private static final int CLEAR_MONITOR_THRESHOLD_LINES = 1000;
     private static final int COLOR_GREEN = Color.parseColor("#439846");
     private static final int COLOR_RED = Color.parseColor("#E91E63");
@@ -32,23 +29,18 @@ public class MainActivity extends AppCompatActivity {
     private static final int COLOR_ORANGE = Color.parseColor("#AB3C19");
     private static final int COLOR_BLACK = Color.parseColor("#000000");
 
-    // UI elements
     private TextView microcontrollerStatus;
     private TextView serverStatus;
     private TextView backCameraStatus;
     private TextView telemetrySocketStatus;
     private TextView controlSocketStatus;
     private TextView logsMonitor;
-    private TextView serialMonitor;
-    private EditText serialInput;
-    private Button sendToSerialButton;
     private Button startApplicationButton;
     private StreamCameraManager streamCameraManager;
 
-    // Application logic
     private ServerManager serverManager;
-    private MicrocontrollerManager microcontrollerManager;
-    private SocketManager socketManager;
+    public MicrocontrollerManager microcontrollerManager;
+    public SocketManager socketManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,9 +49,9 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         serverManager = new ServerManager(this, CONTROLLER_IP);
-        microcontrollerManager = new MicrocontrollerManager(this, BAUD_RATE);
+        microcontrollerManager = new MicrocontrollerManager(this);
         socketManager = new SocketManager(this, CONTROLLER_IP);
-        streamCameraManager = new StreamCameraManager(this, socketManager);
+        streamCameraManager = new StreamCameraManager(this);
     }
 
     private void initViews() {
@@ -69,17 +61,12 @@ public class MainActivity extends AppCompatActivity {
         telemetrySocketStatus = findViewById(R.id.textview_telemetry_socket_status);
         controlSocketStatus = findViewById(R.id.textview_control_socket_status);
         logsMonitor = findViewById(R.id.textview_logs_monitor);
-        serialMonitor = findViewById(R.id.textview_serial_monitor);
-        serialInput = findViewById(R.id.edittext_send_to_serial);
-        sendToSerialButton = findViewById(R.id.button_send_to_serial);
         startApplicationButton = findViewById(R.id.start_application);
 
         startApplicationButton.setEnabled(true); // FIXME
 
         logsMonitor.setMovementMethod(new ScrollingMovementMethod());
-        serialMonitor.setMovementMethod(new ScrollingMovementMethod());
 
-        sendToSerialButton.setOnClickListener(v -> sendMessageToSerial());
         startApplicationButton.setOnClickListener(v -> startApplication());
 
         updateServerStatus(false);
@@ -106,15 +93,12 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             if (plugged) {
                 microcontrollerStatus.setTextColor(COLOR_GREEN);
-                microcontrollerStatus.setText(TARGET_DEVICE_NAME + "@" + BAUD_RATE);
-                serialMonitor.setText("");
+                microcontrollerStatus.setText(TARGET_DEVICE_NAME + "@" + MicrocontrollerManager.BAUD_RATE);
             } else {
                 microcontrollerStatus.setTextColor(COLOR_RED);
                 microcontrollerStatus.setText("UNPLUGGED");
             }
             //startApplication.setEnabled(plugged_in && controllerManager.isOnline()); FIXME
-            sendToSerialButton.setEnabled(plugged);
-            serialInput.setEnabled(plugged);
         });
     }
 
@@ -155,12 +139,6 @@ public class MainActivity extends AppCompatActivity {
             }
             //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
         });
-    }
-
-
-    private void sendMessageToSerial() {
-        String message = serialInput.getText().toString().trim();
-        microcontrollerManager.sendASCII(message);
     }
 
     private void startApplication() {
@@ -227,10 +205,6 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
-    }
-
-    void logSerialMessage(LogType direction, String message) {
-        writeToTextView(serialMonitor, direction, message);
     }
 
     void logMessage(LogType type, String message) {

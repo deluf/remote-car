@@ -3,6 +3,7 @@ package io.github.deluf.rcpp;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.DatagramPacket;
@@ -113,8 +114,7 @@ public class SocketManager {
             InetAddress address = InetAddress.getByName(controllerIP);
             controlSocket = new Socket(address, CONTROL_PORT);
             controlSocket.setSoTimeout(SOCKET_READ_TIMEOUT_MS);
-            controlReader = new BufferedReader(new InputStreamReader(controlSocket.getInputStream()));
-            startControlListener();
+            startControlListener(controlSocket.getInputStream());
             activity.updateControlSocketStatus(true);
             controlReconnecting.set(false);
         } catch (IOException e) {
@@ -131,17 +131,31 @@ public class SocketManager {
                 && !e.getMessage().contains("ECONNREFUSED"));
     }
 
-    private void startControlListener() {
+    private void startControlListener(InputStream inputStream) {
         executorService.execute(() -> {
             isControlListening.set(true);
             try {
-                String command;
+                byte[] read_buffer = new byte[MicrocontrollerManager.COMMAND_LEN];
                 while (isControlListening.get()) {
                     try {
                         if (controlSocket.isClosed() || !controlSocket.isConnected()) break;
-                        command = controlReader.readLine();
-                        if (command == null) break;
-                        handleIncomingCommand(command);
+
+                        int bytesRead = 0;
+                        int bytesToRead = MicrocontrollerManager.COMMAND_LEN;
+                        while (bytesRead < bytesToRead) {
+                            int ret = inputStream.read(read_buffer, bytesRead, bytesToRead - bytesRead);
+                            if (ret <= 0) { break; }
+                            bytesRead += ret;
+                        }
+
+                        StringBuilder hexBuilder = new StringBuilder();
+                        for (byte b : read_buffer) {
+                            hexBuilder.append(String.format("%02X ", b));
+                        }
+                        activity.logMessage(LogType.INFO, hexBuilder.toString());
+
+                        //activity.microcontrollerManager.sendBytes(bytes);
+
                     } catch (SocketTimeoutException e) {
                         // A timeout is expected, continue the loop to check the socket's state
                     }
@@ -272,10 +286,4 @@ public class SocketManager {
         });
     }
 
-    private void handleIncomingCommand(String command) {
-        if (command == null || command.trim().isEmpty()) {
-            return;
-        }
-        activity.logMessage(LogType.INFO, "[CONTROL]: " + command);
-    }
 }

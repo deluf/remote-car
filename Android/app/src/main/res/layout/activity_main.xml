@@ -182,59 +182,5 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/start_application" />
 
-    <TextView
-        android:id="@+id/textview_serial_monitor_label"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="2dp"
-        android:text="Serial monitor"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-        android:textStyle="bold"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@+id/textview_serial_monitor"
-        app:layout_constraintStart_toStartOf="@+id/textview_serial_monitor" />
-
-    <TextView
-        android:id="@+id/textview_serial_monitor"
-        android:layout_width="0dp"
-        android:layout_height="100dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="2dp"
-        android:background="@drawable/textview_border"
-        android:fontFamily="monospace"
-        android:padding="6dp"
-        android:scrollbars="vertical"
-        android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@+id/edittext_send_to_serial"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-
-    <EditText
-        android:id="@+id/edittext_send_to_serial"
-        android:layout_width="0dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="8dp"
-        android:layout_marginBottom="16dp"
-        android:hint="Write message"
-        android:inputType="text"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/button_send_to_serial"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <Button
-        android:id="@+id/button_send_to_serial"
-        style="@style/Widget.AppCompat.Button"
-        android:layout_width="wrap_content"
-        android:layout_height="0dp"
-        android:layout_marginEnd="16dp"
-        android:text="Send"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@+id/edittext_send_to_serial"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/edittext_send_to_serial" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

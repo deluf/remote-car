@@ -18,33 +18,28 @@ import com.hoho.android.usbserial.driver.UsbSerialProber;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import io.github.deluf.rcpp.MainActivity.LogType;
 
 public class MicrocontrollerManager implements SerialInputOutputManager.Listener {
     private static final String ACTION_USB_PERMISSION = "io.github.deluf.rcpp.USB_PERMISSION";
-    private static final int TARGET_VENDOR_ID = 9025;   // Arduino
-    private static final int TARGET_PRODUCT_ID = 67;    // UNO R3
+    public static final int BAUD_RATE = 115200;
+    public static final int COMMAND_LEN = 3; // Bytes
+    private static final int TARGET_VENDOR_ID = 9025; // Arduino
+    private static final int TARGET_PRODUCT_ID = 67; // UNO R3
 
     private final UsbManager usbManager;
     private UsbSerialPort serialPort;
     private SerialInputOutputManager ioManager;
     private UsbDevice devicePendingPermission;
     private final MainActivity activity;
-    private int baudRate;
 
-    MicrocontrollerManager(MainActivity activity, int baudRate) {
+    MicrocontrollerManager(MainActivity activity) {
         this.activity = activity;
-        this.baudRate = baudRate;
         usbManager = (UsbManager) activity.getSystemService(Context.USB_SERVICE);
         registerUsbReceiver();
         findAndConnectToTargetDevice();
-    }
-
-    void setBaudRate(int baudRate) {
-        this.baudRate = baudRate;
     }
 
     private void findAndConnectToTargetDevice() {
@@ -139,7 +134,7 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
 
         try {
             serialPort.open(connection);
-            serialPort.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+            serialPort.setParameters(BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
             ioManager = new SerialInputOutputManager(serialPort, this);
             ioManager.start();
             activity.updateMicrocontrollerStatus(true);
@@ -166,20 +161,15 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         activity.updateMicrocontrollerStatus(false);
     }
 
-    void sendASCII(String message) {
+    void sendBytes(byte[] bytes) {
         if (!isDeviceConnected()) {
             activity.showToast("Connect a serial device first");
             return;
         }
 
-        if (message.isEmpty()) {
-            activity.showToast("Cannot send an empty message");
-            return;
-        }
-
+        int timeout_ms = 250;
         try {
-            serialPort.write((message).getBytes(StandardCharsets.UTF_8), 500);
-            activity.logSerialMessage(LogType.TX, message);
+            serialPort.write(bytes, timeout_ms);
         } catch (IOException e) {
             activity.logMessage(LogType.ERROR, "Unable to write to serial: " + e.getMessage());
         }
@@ -187,9 +177,7 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
 
     @Override
     public void onNewData(byte[] data) {
-        // Interprets the received data as ASCII text and logs it
-        String ASCIImessage = new String(data, StandardCharsets.UTF_8).trim();
-        activity.logSerialMessage(LogType.RX, ASCIImessage);
+        // At the moment it ignores incoming serial messages
     }
 
     @Override

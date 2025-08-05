@@ -95,17 +95,14 @@ class ControllerServer:
             return
     
         try:
-            msg = command + b"\n"
-            msglen = len(msg)
+            msglen = len(command)
             totalsent = 0
             while totalsent < msglen:
-                sent = self.control_client.send(msg[totalsent:])
-                print(f"[DEBUG] sent={sent}")
+                sent = self.control_client.send(command[totalsent:])
                 if sent == 0:
                     raise ConnectionResetError()
+                #print(f"[DEBUG] sent={command[totalsent:totalsent+sent]}")
                 totalsent = totalsent + sent
-                print("Command sent")
-            print(f"Sent {command}")
         except (BrokenPipeError, ConnectionResetError):
             if self.control_client:    
                 self.control_client.close()
