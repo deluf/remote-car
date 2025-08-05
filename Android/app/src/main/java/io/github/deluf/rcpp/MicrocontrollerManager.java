@@ -25,7 +25,6 @@ import io.github.deluf.rcpp.MainActivity.LogType;
 public class MicrocontrollerManager implements SerialInputOutputManager.Listener {
     private static final String ACTION_USB_PERMISSION = "io.github.deluf.rcpp.USB_PERMISSION";
     public static final int BAUD_RATE = 115200;
-    public static final int COMMAND_LEN = 3; // Bytes
     private static final int TARGET_VENDOR_ID = 9025; // Arduino
     private static final int TARGET_PRODUCT_ID = 67; // UNO R3
 
@@ -33,11 +32,11 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
     private UsbSerialPort serialPort;
     private SerialInputOutputManager ioManager;
     private UsbDevice devicePendingPermission;
-    private final MainActivity activity;
+    private final MainActivity mainActivity;
 
-    MicrocontrollerManager(MainActivity activity) {
-        this.activity = activity;
-        usbManager = (UsbManager) activity.getSystemService(Context.USB_SERVICE);
+    MicrocontrollerManager(MainActivity mainActivity) {
+        this.mainActivity = mainActivity;
+        usbManager = (UsbManager) mainActivity.getSystemService(Context.USB_SERVICE);
         registerUsbReceiver();
         findAndConnectToTargetDevice();
     }
@@ -64,7 +63,7 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
     private void requestPermission(UsbDevice device) {
         devicePendingPermission = device;
         int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
-        PendingIntent intent = PendingIntent.getBroadcast(activity, 0, new Intent(ACTION_USB_PERMISSION), flags);
+        PendingIntent intent = PendingIntent.getBroadcast(mainActivity, 0, new Intent(ACTION_USB_PERMISSION), flags);
         usbManager.requestPermission(device, intent);
     }
 
@@ -111,9 +110,9 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         };
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity.registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED);
+            mainActivity.registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED);
         } else {
-            activity.registerReceiver(receiver, filter);
+            mainActivity.registerReceiver(receiver, filter);
         }
     }
 
@@ -128,7 +127,7 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         serialPort = driver.getPorts().get(0);
         UsbDeviceConnection connection = usbManager.openDevice(device);
         if (connection == null) {
-            activity.logMessage(LogType.ERROR, "Failed to open serial connection");
+            mainActivity.logMessage(LogType.ERROR, "Failed to open serial connection");
             return;
         }
 
@@ -137,9 +136,9 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
             serialPort.setParameters(BAUD_RATE, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
             ioManager = new SerialInputOutputManager(serialPort, this);
             ioManager.start();
-            activity.updateMicrocontrollerStatus(true);
+            mainActivity.updateMicrocontrollerStatus(true);
         } catch (IOException e) {
-            activity.logMessage(LogType.ERROR, "Serial connection error: " + e.getMessage());
+            mainActivity.logMessage(LogType.ERROR, "Serial connection error: " + e.getMessage());
             closeSerialPort();
         }
     }
@@ -158,12 +157,12 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
             try { serialPort.close(); } catch (IOException ignored) {}
             serialPort = null;
         }
-        activity.updateMicrocontrollerStatus(false);
+        mainActivity.updateMicrocontrollerStatus(false);
     }
 
     void sendBytes(byte[] bytes) {
         if (!isDeviceConnected()) {
-            activity.showToast("Connect a serial device first");
+            mainActivity.showToast("Connect a serial device first");
             return;
         }
 
@@ -171,7 +170,7 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         try {
             serialPort.write(bytes, timeout_ms);
         } catch (IOException e) {
-            activity.logMessage(LogType.ERROR, "Unable to write to serial: " + e.getMessage());
+            mainActivity.logMessage(LogType.ERROR, "Unable to write to serial: " + e.getMessage());
         }
     }
 
@@ -188,6 +187,6 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
                 && errorMessage.equals("USB get_status request failed")) {
             return;
         }
-        activity.logMessage(LogType.ERROR, "Uncaught error in serial port: " + e.getMessage());
+        mainActivity.logMessage(LogType.ERROR, "Uncaught error in serial port: " + e.getMessage());
     }
 }

@@ -42,6 +42,8 @@ public class MainActivity extends AppCompatActivity {
     private ServerManager serverManager;
     public MicrocontrollerManager microcontrollerManager;
     public SocketManager socketManager;
+    public TelemetryManager telemetryManager;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,6 +55,7 @@ public class MainActivity extends AppCompatActivity {
         microcontrollerManager = new MicrocontrollerManager(this);
         socketManager = new SocketManager(this, CONTROLLER_IP);
         streamCameraManager = new StreamCameraManager(this);
+        telemetryManager = new TelemetryManager(this);
     }
 
     private void initViews() {
@@ -143,13 +146,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startApplication() {
-        streamCameraManager.startStreaming();
+        startApplicationButton.setEnabled(false);
 
         serverManager.stopControllerMonitoring();
-        serverStatus.setTextColor(COLOR_GRAY);
-        serverStatus.setText("-");
+        runOnUiThread(() -> {
+            serverStatus.setTextColor(COLOR_GRAY);
+            serverStatus.setText("-");
+        });
 
-        startApplicationButton.setEnabled(false);
+        telemetryManager.startCollecting();
+        streamCameraManager.startStreaming();
     }
 
     enum LogType {
@@ -231,6 +237,7 @@ public class MainActivity extends AppCompatActivity {
         microcontrollerManager.closeSerialPort();
         socketManager.destroy();
         streamCameraManager.stopStreaming();
+        telemetryManager.stopCollecting();
     }
 
     @Override
