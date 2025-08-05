@@ -148,14 +148,7 @@ public class SocketManager {
                             bytesRead += ret;
                         }
 
-                        StringBuilder hexBuilder = new StringBuilder();
-                        for (byte b : read_buffer) {
-                            hexBuilder.append(String.format("%02X ", b));
-                        }
-                        activity.logMessage(LogType.INFO, hexBuilder.toString());
-
-                        //activity.microcontrollerManager.sendBytes(bytes);
-
+                        activity.microcontrollerManager.sendBytes(read_buffer);
                     } catch (SocketTimeoutException e) {
                         // A timeout is expected, continue the loop to check the socket's state
                     }

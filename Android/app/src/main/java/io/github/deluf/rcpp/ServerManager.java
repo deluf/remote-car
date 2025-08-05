@@ -8,13 +8,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ServerManager {
-    private static final int MONITORING_INTERVAL_MS = 3000;
-    private static final int REACHABILITY_TIMEOUT_MS = 1000;
+    private static final int MONITORING_INTERVAL_MS = 1000;
+    private static final int REACHABILITY_TIMEOUT_MS = 500;
 
     private final Handler monitoringHandler;
     private final Runnable monitoringTask;
     private final ExecutorService monitoringExecutor;
-    private boolean isControllerBeingMonitored = false;
+    private long lastReachableTime = 0;
 
     ServerManager(MainActivity activity, String CONTROLLER_IP)  {
         monitoringHandler = new Handler(Looper.getMainLooper());
@@ -22,42 +22,38 @@ public class ServerManager {
         monitoringTask = new Runnable() {
             @Override
             public void run() {
-                if (isControllerBeingMonitored) {
-                    monitoringExecutor.execute(() -> {
-                        try {
-                            InetAddress address = InetAddress.getByName(CONTROLLER_IP);
-                            //long startTime = System.currentTimeMillis();
-                            boolean reachable = address.isReachable(REACHABILITY_TIMEOUT_MS);
-                            //long pingTime = System.currentTimeMillis() - startTime;
-                            activity.updateServerStatus(reachable);
-                        } catch (Exception e) {
+                monitoringExecutor.execute(() -> {
+                    try {
+                        InetAddress address = InetAddress.getByName(CONTROLLER_IP);
+                        boolean reachable = address.isReachable(REACHABILITY_TIMEOUT_MS);
+                        lastReachableTime = System.currentTimeMillis();
+                        activity.updateServerStatus(reachable);
+                    } catch (Exception e) {
+                        long currentTime = System.currentTimeMillis();
+                        // Only set the reachability status to false if the server
+                        //  does not respond for more than 3 monitoring intervals in a row
+                        if (currentTime - lastReachableTime >= MONITORING_INTERVAL_MS * 3) {
                             activity.updateServerStatus(false);
                         }
-                    });
-                    monitoringHandler.postDelayed(this, MONITORING_INTERVAL_MS);
-                }
+                    }
+                });
+                monitoringHandler.postDelayed(this, MONITORING_INTERVAL_MS);
             }
         };
         resumeControllerMonitoring();
     }
 
     void resumeControllerMonitoring() {
-        if (!isControllerBeingMonitored) {
-            isControllerBeingMonitored = true;
-            monitoringHandler.post(monitoringTask);
-        }
+        monitoringHandler.post(monitoringTask);
     }
 
     void pauseControllerMonitoring() {
-        isControllerBeingMonitored = false;
-        if (monitoringHandler != null) {
-            monitoringHandler.removeCallbacks(monitoringTask);
-        }
+        monitoringHandler.removeCallbacks(monitoringTask);
     }
 
     void stopControllerMonitoring() {
         pauseControllerMonitoring();
-        if (monitoringExecutor != null && !monitoringExecutor.isShutdown()) {
+        if (!monitoringExecutor.isShutdown()) {
             monitoringExecutor.shutdown();
         }
     }

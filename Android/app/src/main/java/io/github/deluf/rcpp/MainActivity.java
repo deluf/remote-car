@@ -28,6 +28,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int COLOR_BLUE = Color.parseColor("#03A9F4");
     private static final int COLOR_ORANGE = Color.parseColor("#AB3C19");
     private static final int COLOR_BLACK = Color.parseColor("#000000");
+    private static final int COLOR_GRAY = Color.parseColor("#808080");
 
     private TextView microcontrollerStatus;
     private TextView serverStatus;
@@ -143,13 +144,15 @@ public class MainActivity extends AppCompatActivity {
 
     private void startApplication() {
         streamCameraManager.startStreaming();
-        socketManager.sendTelemetry("TEL.DUMMY");
+
+        serverManager.stopControllerMonitoring();
+        serverStatus.setTextColor(COLOR_GRAY);
+        serverStatus.setText("-");
+
         startApplicationButton.setEnabled(false);
     }
 
     enum LogType {
-        TX("[TX]", COLOR_BLUE),
-        RX("[RX]", COLOR_RED),
         ERROR("[ERROR]", COLOR_RED),
         WARNING("[WARNING]", COLOR_ORANGE),
         INFO("[INFO]", COLOR_BLACK),
@@ -188,7 +191,7 @@ public class MainActivity extends AppCompatActivity {
             int start = sb.length();
             sb.append(type.tag).append(" ").append(message).append("\n");
 
-            if (type == LogType.RX || type == LogType.TX || type == LogType.ERROR) {
+            if (type == LogType.ERROR) {
                 sb.setSpan(new StyleSpan(Typeface.BOLD), start, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             sb.setSpan(new ForegroundColorSpan(type.color), start, sb.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
