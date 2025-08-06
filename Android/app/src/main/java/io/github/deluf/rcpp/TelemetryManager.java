@@ -32,17 +32,19 @@ public class TelemetryManager implements SensorEventListener {
     private LocationManager locationManager;
     private TelephonyManager telephonyManager;
 
-    private static final int LOCATION_UPDATE_INTERVAL_MS = 1000;
     private static final int HEADING_UPDATE_INTERVAL_US = 500_000;
     private static final int MAX_LOCATION_PRECISION = 5; // decimal places: 5 ~ 1.1 m
+
+    private long lastGPSFix = 0;
+    // If the last GPS fix is older than this threshold, then use network-based location
+    private static final int GPS_STALENESS_THRESHOLD_MS = 30_000;
+
 
     // Variables required to perform heading computations
     private final float[] accelerometerReading = new float[3];
     private final float[] magnetometerReading = new float[3];
     private final float[] rotationMatrix = new float[9];
     private final float[] orientationAngles = new float[3];
-
-    private long lastGPSFix = 0;
 
     private enum Metric {
         BATTERY_PERCENT,    // [0-100]  | int
@@ -81,9 +83,11 @@ public class TelemetryManager implements SensorEventListener {
                 HEADING_UPDATE_INTERVAL_US, HEADING_UPDATE_INTERVAL_US * 2);
         sensorManager.registerListener(this, accelerometer,
                 HEADING_UPDATE_INTERVAL_US, HEADING_UPDATE_INTERVAL_US * 2);
+        mainActivity.logMessage(MainActivity.LogType.INFO, "Heading monitoring enabled");
 
         IntentFilter batteryFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
         mainActivity.registerReceiver(batteryReceiver, batteryFilter);
+        mainActivity.logMessage(MainActivity.LogType.INFO, "Battery monitoring enabled");
 
         startCellularMonitoring();
         startLocationMonitoring();
@@ -179,6 +183,7 @@ public class TelemetryManager implements SensorEventListener {
             return;
         }
         telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS);
+        mainActivity.logMessage(MainActivity.LogType.INFO, "Phone state monitoring enabled");
     }
 
     private final PhoneStateListener phoneStateListener = new PhoneStateListener() {
@@ -200,18 +205,18 @@ public class TelemetryManager implements SensorEventListener {
         }
 
         if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            mainActivity.logMessage(MainActivity.LogType.INFO, "GPS positioning enabled");
             locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER, LOCATION_UPDATE_INTERVAL_MS, 1.0f, this::onFineLocationChanged);
+                    LocationManager.GPS_PROVIDER, 1000, 1.0f, this::onFineLocationChanged);
         }
         if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            mainActivity.logMessage(MainActivity.LogType.INFO, "Network positioning enabled");
             locationManager.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER, LOCATION_UPDATE_INTERVAL_MS, 1.0f, this::onCoarseLocationChanged);
+                    LocationManager.NETWORK_PROVIDER, 1000, 1.0f, this::onCoarseLocationChanged);
         }
     }
 
-    public void onFineLocationChanged(Location location) {
-        lastGPSFix = System.currentTimeMillis();
-
+    private void onLocationChanged(Location location) {
         float precisionMultiplier = (float) Math.pow(10, MAX_LOCATION_PRECISION);
         float latitude = Math.round(location.getLatitude() * precisionMultiplier) / precisionMultiplier;
         float longitude = Math.round(location.getLongitude() * precisionMultiplier) / precisionMultiplier;
@@ -229,10 +234,20 @@ public class TelemetryManager implements SensorEventListener {
         updateMetricIfChanged(Metric.BEARING, bearing);
     }
 
-    public void onCoarseLocationChanged(Location location) {
+    private void onFineLocationChanged(Location location) {
+        lastGPSFix = System.currentTimeMillis();
+        onLocationChanged(location);
+        mainActivity.logMessage(MainActivity.LogType.INFO, "GPS location update received");
+    }
+
+    private void onCoarseLocationChanged(Location location) {
         // If the GPS signal is stale, use the coarse location
-        if (System.currentTimeMillis() - lastGPSFix > LOCATION_UPDATE_INTERVAL_MS * 3) {
-            onFineLocationChanged(location);
+        if (System.currentTimeMillis() - lastGPSFix > GPS_STALENESS_THRESHOLD_MS) {
+            onLocationChanged(location);
+            mainActivity.logMessage(MainActivity.LogType.INFO, "Network location update received and applied");
+        }
+        else {
+            mainActivity.logMessage(MainActivity.LogType.INFO, "Network location update received and ignored");
         }
     }
 
