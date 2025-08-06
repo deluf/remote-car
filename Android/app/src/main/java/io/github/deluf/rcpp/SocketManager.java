@@ -93,7 +93,6 @@ public class SocketManager {
         try {
             InetAddress address = InetAddress.getByName(controllerIP);
             telemetrySocket = new Socket(address, TELEMETRY_PORT);
-            telemetrySocket.getOutputStream();
             mainActivity.updateTelemetrySocketStatus(true);
             telemetryReconnecting.set(false);
         } catch (IOException e) {
@@ -127,29 +126,30 @@ public class SocketManager {
                 && !e.getMessage().contains("ECONNREFUSED"));
     }
 
+    // FIXME: This function is hard to understand
     private void startControlListener(InputStream inputStream) {
         executorService.execute(() -> {
             byte[] read_buffer = new byte[COMMAND_LEN];
             isControlListening.set(true);
             try {
                 while (isControlListening.get()) {
-                    if (controlSocket.isClosed() || !controlSocket.isConnected()) break;
+
+                    if (controlSocket.isClosed() || !controlSocket.isConnected()) { break; }
 
                     int bytesRead = 0;
                     int ret;
                     while (bytesRead < COMMAND_LEN) {
-                        try {
-                            ret = inputStream.read(read_buffer, bytesRead, COMMAND_LEN - bytesRead);
-                        }
-                        catch (SocketTimeoutException e) {
-                            // A timeout is expected, continue the outer loop to check the socket's state
-                            break;
-                        }
-                        if (ret <= 0) { break; }
+
+                        try { ret = inputStream.read(read_buffer, bytesRead, COMMAND_LEN - bytesRead); }
+                        catch (SocketTimeoutException e) { break; } // A timeout is expected
+                        if (ret <= 0) { break; } // Connection closed
+
                         bytesRead += ret;
                     }
 
-                    mainActivity.microcontrollerManager.sendBytes(read_buffer);
+                    if (bytesRead == COMMAND_LEN) {
+                        mainActivity.microcontrollerManager.sendBytes(read_buffer);
+                    }
                 }
             } catch (IOException e) {
                 mainActivity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
