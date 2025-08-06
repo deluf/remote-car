@@ -1,12 +1,17 @@
 
 import folium
+import os
+import psutil
+import subprocess
 from datetime import datetime
 
-class MapBuilder:
+class Map_Builder:
 
     def __init__(self):
         self.FILENAME = "map.html"
         self.PROVIDER = "OpenStreetMap"
+        
+        self.background_process = None
 
         self.last_marker = None
         self.waypoints = []
@@ -17,7 +22,7 @@ class MapBuilder:
         )
         self.map.save(self.FILENAME)
         
-    def add_waypoint(self, lat, lon, accuracy=None):
+    def add_waypoint(self, lat, lon, accuracy):
         if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
             print(f"Invalid coordinates: lat={lat}, lon={lon}")
             return
@@ -42,7 +47,7 @@ class MapBuilder:
 
         # Add the waypoint marker to the map
         popup_text = f"Point {idx+1}<br>Lat: {lat:.6f}<br>Lon: {lon:.6f}<br>Time: {timestamp.strftime('%H:%M:%S')}"
-        if accuracy is not None:
+        if accuracy > 0:
             popup_text += f"<br>Accuracy: {accuracy}m"
         
         marker = folium.Marker(
@@ -53,7 +58,7 @@ class MapBuilder:
         ).add_to(self.map)
                 
         # Add the accuracy circle (if available)
-        if accuracy is not None and accuracy > 0:
+        if accuracy > 0:
             folium.Circle(
                 location=[lat, lon],
                 radius=accuracy,
@@ -69,6 +74,7 @@ class MapBuilder:
         # If the added waypoint is the first, stop here
         if self.last_marker is None:
             self.last_marker = marker
+            self.map.save(self.FILENAME)
             return
 
         # Get the old latest waypoint
@@ -90,3 +96,19 @@ class MapBuilder:
         
         self.last_marker = marker
         self.map.save(self.FILENAME)
+
+    def open_live_map(self):
+        electron_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Electron'))
+        cmd = ["npx", "electron", "."]
+        try:
+            self.background_process = subprocess.Popen(cmd, 
+                cwd=electron_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"Failed to launch electron: {e}")
+
+    def close_live_map(self):
+        parent = psutil.Process(self.background_process.pid)
+        for child in parent.children(recursive=True):
+            child.kill()
+        parent.kill()
+        print("Electron process and its children terminated")
