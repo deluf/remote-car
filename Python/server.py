@@ -1,13 +1,25 @@
 
 import socket
 import threading
+import struct
+from enum import IntEnum
 
-class ControllerServer:
-    def __init__(self):
+class Metric(IntEnum):                       # BANDWIDTH ?
+    BATTERY_PERCENT = 0 # [0-100]  | int           ICON + TEXT
+    BATTERY_TEMP = 1    # celsius  | int           TEXT - or remove
+    POSITION = 2,       # LATITUDE  | float,
+                        # LONGITUDE | float,
+                        # ACCURACY  | int
+    HEADING = 3         # degrees  | int           VIDEO - SLIDER ON TOP LIKE GEOGUESSR
+    SIGNAL_LEVEL = 4    # [0-4]    | int           CHART? VIDEO?
+
+class Server:
+    def __init__(self, telemetry_callback):
         self.host = '0.0.0.0'
         self.telemetry_port = 8003
         self.control_port = 8004 
-        
+        self.telemetry_callback = telemetry_callback
+    
         self.telemetry_socket = None  
         self.control_socket = None
         
@@ -36,10 +48,30 @@ class ControllerServer:
                     while self.running:
                         try:
                             client.settimeout(1.0)
-                            data = client.recv(1024).decode('utf-8').strip()
-                            if not data:
+
+                            # First read the metric byte
+                            packet = self.telemetry_client.recv(1)
+                            if not packet:
                                 break
-                            print(f"Received telemetry: {data}")
+                            
+                            # Raises exception on value error
+                            metric = Metric(packet[0])
+                            
+                            data = b''
+                            expected_bytes = 4
+                            if metric == Metric.POSITION:
+                                expected_bytes *= 3 # We expect three values
+
+                            while len(data) < expected_bytes:
+                                packet = self.telemetry_client.recv(expected_bytes - len(data))
+                                if not packet:
+                                    break
+                                data += packet
+                            else:
+                                self.recv_telemetry(metric, data)
+                                continue  # Continue if the inner loop wasn't broken.
+                            break
+
                         except socket.timeout:
                             continue
                         except Exception as e:
@@ -111,6 +143,18 @@ class ControllerServer:
         except Exception as e:
             print(f"Unable to send command: {e}")
     
+    def recv_telemetry(self, metric, data):
+
+        if metric == Metric.POSITION:
+            value = []
+            value.append(struct.unpack('>f', data[:4])[0])  # big-endian float
+            value.append(struct.unpack('>f', data[4:8])[0]) # big-endian float
+            value.append(struct.unpack('>i', data[8:])[0])  # big-endian int
+        else:
+            value = struct.unpack('>i', data)[0] # big-endian int
+
+        self.telemetry_callback(metric, value)
+
     def stop(self):
         self.running = False
         

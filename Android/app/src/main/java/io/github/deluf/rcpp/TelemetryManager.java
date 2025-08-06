@@ -20,6 +20,7 @@ import android.telephony.TelephonyManager;
 import androidx.core.app.ActivityCompat;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -32,12 +33,15 @@ public class TelemetryManager implements SensorEventListener {
     private LocationManager locationManager;
     private TelephonyManager telephonyManager;
 
+    // FIXME: Forse mandare tutto il gps, poi filtrare lato ui
     private static final int HEADING_UPDATE_INTERVAL_US = 500_000;
+    private static final int MIN_LOCATION_UPDATE_INTERVAL_MS = 10_000;
+    private static final int MIN_LOCATION_UPDATE_DISTANCE_M = 10;
     private static final int MAX_LOCATION_PRECISION = 5; // decimal places: 5 ~ 1.1 m
 
     private long lastGPSFix = 0;
     // If the last GPS fix is older than this threshold, then use network-based location
-    private static final int GPS_STALENESS_THRESHOLD_MS = 30_000;
+    private static final int GPS_STALENESS_THRESHOLD_MS = 60_000;
 
 
     // Variables required to perform heading computations
@@ -47,17 +51,13 @@ public class TelemetryManager implements SensorEventListener {
     private final float[] orientationAngles = new float[3];
 
     private enum Metric {
-        BATTERY_PERCENT,    // [0-100]  | int
-        BATTERY_TEMP,       // celsius  | int
-        BATTERY_CHARGING,   // [0-1]    | int
-        LATITUDE,           // degrees  | float
-        LONGITUDE,          // degrees  | float
-        ALTITUDE,           // meters   | int
-        LOCATION_ACCURACY,  // meters   | int
-        SPEED,              // km/h     | int
-        BEARING,            // degrees  | int
-        HEADING,            // degrees  | int
-        SIGNAL_LEVEL,       // [0-4]    | int
+        BATTERY_PERCENT,    // [0-100]   | int
+        BATTERY_TEMP,       // celsius   | int
+        POSITION,           // LATITUDE  | float,
+                            // LONGITUDE | float,
+                            // ACCURACY  | int
+        HEADING,            // degrees   | int
+        SIGNAL_LEVEL,       // [0-4]     | int
     }
     private final Map<Metric, Object> lastKnownValues = new HashMap<>();
 
@@ -129,25 +129,25 @@ public class TelemetryManager implements SensorEventListener {
     private void updateMetricIfChanged(Metric metric, Object newValue) {
         Object oldValue = lastKnownValues.get(metric);
         if (newValue.equals(oldValue)) { return; }
-
         lastKnownValues.put(metric, newValue);
 
         // Telemetry data is sent as a byte array with the following format:
         // - metric type: first byte
-        // - value: bytes 1 to 4 (can take up to ints and floats)
-        ByteBuffer buffer = ByteBuffer.allocate(5);
-        buffer.put((byte) metric.ordinal());
-        if (newValue instanceof Integer) {
-            buffer.putInt((Integer) newValue);
-        }
-        else if (newValue instanceof Float) {
-            buffer.putFloat((Float) newValue);
+        // - values: 4 bytes per value (int or float)
+        ByteBuffer buffer;
+        if (metric == Metric.POSITION) {
+            buffer = ByteBuffer.allocate(1 + 3*4);
+            buffer.put((byte) metric.ordinal());
+            ArrayList<Number> position = (ArrayList<Number>) newValue;
+            buffer.putFloat((Float) position.get(0));
+            buffer.putFloat((Float) position.get(1));
+            buffer.putInt((Integer) position.get(2));
         }
         else {
-            throw new IllegalArgumentException(
-                    "Unsupported type for serialization: " + newValue.getClass());
+            buffer = ByteBuffer.allocate(5);
+            buffer.put((byte) metric.ordinal());
+            buffer.putInt((Integer) newValue);
         }
-
         mainActivity.socketManager.sendTelemetryData(buffer.array());
     }
 
@@ -157,7 +157,6 @@ public class TelemetryManager implements SensorEventListener {
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
             int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             int rawTemperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1);
-            int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
 
             if (level != -1 && scale != -1) {
                 int chargePercentage = (level * 100) / scale;
@@ -167,11 +166,6 @@ public class TelemetryManager implements SensorEventListener {
             if (rawTemperature != -1) {
                 int temperature = rawTemperature / 10; // rawTemperature is in tenths of degrees
                 updateMetricIfChanged(Metric.BATTERY_TEMP, temperature);
-            }
-
-            if (status != -1) {
-                int charging = status == BatteryManager.BATTERY_STATUS_CHARGING ? 1 : 0;
-                updateMetricIfChanged(Metric.BATTERY_CHARGING, charging);
             }
         }
     };
@@ -207,12 +201,14 @@ public class TelemetryManager implements SensorEventListener {
         if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             mainActivity.logMessage(MainActivity.LogType.INFO, "GPS positioning enabled");
             locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER, 1000, 1.0f, this::onFineLocationChanged);
+                    LocationManager.GPS_PROVIDER, MIN_LOCATION_UPDATE_INTERVAL_MS,
+                    MIN_LOCATION_UPDATE_DISTANCE_M, this::onFineLocationChanged);
         }
         if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
             mainActivity.logMessage(MainActivity.LogType.INFO, "Network positioning enabled");
             locationManager.requestLocationUpdates(
-                    LocationManager.NETWORK_PROVIDER, 1000, 1.0f, this::onCoarseLocationChanged);
+                    LocationManager.NETWORK_PROVIDER, MIN_LOCATION_UPDATE_INTERVAL_MS,
+                    MIN_LOCATION_UPDATE_DISTANCE_M, this::onCoarseLocationChanged);
         }
     }
 
@@ -220,34 +216,24 @@ public class TelemetryManager implements SensorEventListener {
         float precisionMultiplier = (float) Math.pow(10, MAX_LOCATION_PRECISION);
         float latitude = Math.round(location.getLatitude() * precisionMultiplier) / precisionMultiplier;
         float longitude = Math.round(location.getLongitude() * precisionMultiplier) / precisionMultiplier;
+        int accuracy = location.hasAccuracy() ? (int) location.getAccuracy() : 0;
 
-        int accuracy = (int) location.getAccuracy();
-        int altitude = location.hasAltitude() ? (int) location.getAltitude() : 0;
-        int speed = location.hasSpeed() ? (int) (location.getSpeed() * 3.6) : 0;
-        int bearing = location.hasBearing() ? (int) location.getBearing() : 0;
-
-        updateMetricIfChanged(Metric.LATITUDE, latitude);
-        updateMetricIfChanged(Metric.LONGITUDE, longitude);
-        updateMetricIfChanged(Metric.ALTITUDE, altitude);
-        updateMetricIfChanged(Metric.LOCATION_ACCURACY, accuracy);
-        updateMetricIfChanged(Metric.SPEED, speed);
-        updateMetricIfChanged(Metric.BEARING, bearing);
+        ArrayList<Number> position = new ArrayList<>(3);
+        position.add(latitude);
+        position.add(longitude);
+        position.add(accuracy);
+        updateMetricIfChanged(Metric.POSITION, position);
     }
 
     private void onFineLocationChanged(Location location) {
         lastGPSFix = System.currentTimeMillis();
         onLocationChanged(location);
-        mainActivity.logMessage(MainActivity.LogType.INFO, "GPS location update received");
     }
 
     private void onCoarseLocationChanged(Location location) {
         // If the GPS signal is stale, use the coarse location
         if (System.currentTimeMillis() - lastGPSFix > GPS_STALENESS_THRESHOLD_MS) {
             onLocationChanged(location);
-            mainActivity.logMessage(MainActivity.LogType.INFO, "Network location update received and applied");
-        }
-        else {
-            mainActivity.logMessage(MainActivity.LogType.INFO, "Network location update received and ignored");
         }
     }
 
