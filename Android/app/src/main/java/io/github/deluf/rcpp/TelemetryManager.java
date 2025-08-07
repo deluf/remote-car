@@ -19,10 +19,16 @@ import android.telephony.TelephonyManager;
 
 import androidx.core.app.ActivityCompat;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class TelemetryManager implements SensorEventListener {
 
@@ -32,7 +38,9 @@ public class TelemetryManager implements SensorEventListener {
     private Sensor accelerometer;
     private LocationManager locationManager;
     private TelephonyManager telephonyManager;
+    private ScheduledExecutorService temperatureService;
 
+    private static final int TEMPERATURE_UPDATE_INTERVAL_MS = 5000;
     private static final int HEADING_UPDATE_INTERVAL_US = 500_000;
     private static final int MIN_LOCATION_UPDATE_INTERVAL_MS = 10_000;
     private static final int MIN_LOCATION_UPDATE_DISTANCE_M = 10;
@@ -50,14 +58,31 @@ public class TelemetryManager implements SensorEventListener {
     private final float[] orientationAngles = new float[3];
 
     private enum Metric {
-        BATTERY_PERCENT,    // [0-100]   | int
-        CPU_TEMP,           // celsius   | int
-        POSITION,           // LATITUDE  | float,
-                            // LONGITUDE | float,
-                            // ACCURACY  | int
-        HEADING,            // degrees   | int
-        SIGNAL_LEVEL,       // [0-4]     | int
+        // The sensors id of the temp metrics refers to the thermal zone id
+        MODEM_TEMP(3),          // celsius  | int
+        CAMERA_TEMP(5),         // celsius  | int
+        CPU_TEMP(6),            // celsius  | int  (Average temp of the high performance core cluster)
+        GPU_TEMP(12),           // celsius  | int
+        BATTERY_TEMP(42),       // celsius  | int
+
+        BATTERY_PERCENT(100),   // [0-100]   | int
+        POSITION(101),          // LATITUDE  | float,
+                                        // LONGITUDE | float,
+                                        // ACCURACY  | int
+        HEADING(102),           // degrees   | int
+        SIGNAL_LEVEL(103);      // [0-4]     | int
+
+        private final int sensorId;
+
+        Metric(int sensorId) {
+            this.sensorId = sensorId;
+        }
+
+        public int getSensorId() {
+            return sensorId;
+        }
     }
+
     private final Map<Metric, Object> lastKnownValues = new HashMap<>();
 
     public TelemetryManager(MainActivity mainActivity) {
@@ -90,6 +115,7 @@ public class TelemetryManager implements SensorEventListener {
 
         startCellularMonitoring();
         startLocationMonitoring();
+        startTemperatureMonitoring();
     }
 
     @Override
@@ -136,7 +162,7 @@ public class TelemetryManager implements SensorEventListener {
         ByteBuffer buffer;
         if (metric == Metric.POSITION) {
             buffer = ByteBuffer.allocate(1 + 3*4);
-            buffer.put((byte) metric.ordinal());
+            buffer.put((byte) metric.getSensorId());
             ArrayList<Number> position = (ArrayList<Number>) newValue;
             buffer.putFloat((Float) position.get(0));
             buffer.putFloat((Float) position.get(1));
@@ -144,7 +170,7 @@ public class TelemetryManager implements SensorEventListener {
         }
         else {
             buffer = ByteBuffer.allocate(5);
-            buffer.put((byte) metric.ordinal());
+            buffer.put((byte) metric.getSensorId());
             buffer.putInt((Integer) newValue);
         }
         mainActivity.socketManager.sendTelemetryData(buffer.array());
@@ -229,6 +255,38 @@ public class TelemetryManager implements SensorEventListener {
         }
     }
 
+    private void startTemperatureMonitoring() {
+        temperatureService = Executors.newSingleThreadScheduledExecutor();
+        temperatureService.scheduleWithFixedDelay(this::readTemperatures,
+                0, TEMPERATURE_UPDATE_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        mainActivity.logMessage(MainActivity.LogType.INFO, "Temperature monitoring enabled");
+    }
+
+    private void readTemperatures() {
+        readTemperature(Metric.MODEM_TEMP);
+        readTemperature(Metric.CAMERA_TEMP);
+        readTemperature(Metric.CPU_TEMP);
+        readTemperature(Metric.GPU_TEMP);
+        readTemperature(Metric.BATTERY_TEMP);
+    }
+
+    private void readTemperature(Metric metric) {
+        String thermalZonePath = "/sys/class/thermal/thermal_zone" + metric.getSensorId() + "/temp";
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(thermalZonePath))) {
+            String tempString = reader.readLine();
+            if (tempString != null && !tempString.trim().isEmpty()) {
+                // Temperature is in milli-Celsius, convert to Celsius and round to int
+                int tempMilliC = Integer.parseInt(tempString.trim());
+                int tempC = Math.round(tempMilliC / 1000.0f);
+                updateMetricIfChanged(metric, tempC);
+            }
+        } catch (IOException e) {
+            mainActivity.logMessage(MainActivity.LogType.ERROR,
+                    "Error reading " + metric.name() + ": " + e.getMessage());
+        }
+    }
+
     public void stopCollecting() {
         // Unregister sensor listeners
         if (sensorManager != null) {
@@ -244,6 +302,11 @@ public class TelemetryManager implements SensorEventListener {
         // Stop cellular monitoring
         if (telephonyManager != null) {
             telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE);
+        }
+
+        // Stop temperature monitoring
+        if (temperatureService != null && !temperatureService.isShutdown()) {
+            temperatureService.shutdown();
         }
 
         // Unregister battery receiver

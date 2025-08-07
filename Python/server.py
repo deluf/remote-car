@@ -6,14 +6,18 @@ from enum import IntEnum
 
 from printer import perror
 
-class METRIC(IntEnum):                       # BANDWIDTH ?
-    BATTERY_PERCENT = 0 # [0-100]  | int           ICON + TEXT
-    BATTERY_TEMP = 1    # celsius  | int           TEXT - or remove
-    POSITION = 2        # LATITUDE  | float,
-                        # LONGITUDE | float,
-                        # ACCURACY  | int
-    HEADING = 3         # degrees  | int           VIDEO - SLIDER ON TOP LIKE GEOGUESSR
-    SIGNAL_LEVEL = 4    # [0-4]    | int           CHART? VIDEO?
+class METRIC(IntEnum):
+    MODEM_TEMP = 3           # celsius   | int
+    CAMERA_TEMP = 5          # celsius   | int
+    CPU_TEMP = 6             # celsius   | int  (Average temp of the high performance core cluster)
+    GPU_TEMP = 12            # celsius   | int
+    BATTERY_TEMP = 42        # celsius   | int
+    BATTERY_PERCENT = 100    # [0-100]   | int
+    POSITION = 101           # LATITUDE  | float,
+                             # LONGITUDE | float,
+                             # ACCURACY  | int
+    HEADING = 102            # degrees   | int
+    SIGNAL_LEVEL = 103       # [0-4]     | int
 
 class Server:
     def __init__(self, telemetry_callback):

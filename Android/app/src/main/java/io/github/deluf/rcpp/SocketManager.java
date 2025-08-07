@@ -99,10 +99,10 @@ public class SocketManager {
             mainActivity.updateControlSocketStatus(true);
             controlReconnecting.set(false);
         } catch (IOException e) {
-            mainActivity.logMessage(LogType.ERROR, "Unknown control socket error: " + e.getMessage());
-            //if (isUnknownSocketError(e)) {
-            //    mainActivity.logMessage(LogType.ERROR, "Unknown control socket error: " + e.getMessage());
-            //} FIXME:
+            // If the error is one of the "expected" ones, just update the ui - done in scheduleControlReconnect
+            if (isUnknownSocketError(e)) {
+                mainActivity.logMessage(LogType.ERROR, "Unknown control socket error: " + e.getMessage());
+            }
             controlReconnecting.set(false);
             scheduleControlReconnect();
         }

@@ -20,9 +20,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 @SuppressLint("SetTextI18n")
 public class MainActivity extends AppCompatActivity {
-
-    // FIXME: Nota, le autorizzazioni per telefono, posizione e microfono vanno date a mano nella ui di sistema???
-    // attention please, telemetry smette a caso di funzionare se manca banda per un po
     private static final String TARGET_DEVICE_NAME = "Arduino UNO R3";
     private static final String CONTROLLER_IP = "100.92.38.63"; // Tailscale's IP of my computer
     private static final int CLEAR_MONITOR_THRESHOLD_LINES = 1000;
