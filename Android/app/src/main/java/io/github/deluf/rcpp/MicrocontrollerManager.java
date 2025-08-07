@@ -12,6 +12,8 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
 import android.os.Build;
 
+import androidx.core.content.ContextCompat;
+
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
@@ -38,33 +40,7 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         this.mainActivity = mainActivity;
         usbManager = (UsbManager) mainActivity.getSystemService(Context.USB_SERVICE);
         registerUsbReceiver();
-        findAndConnectToTargetDevice();
-    }
-
-    private void findAndConnectToTargetDevice() {
-        List<UsbSerialDriver> drivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
-        for (UsbSerialDriver driver : drivers) {
-            UsbDevice device = driver.getDevice();
-            if (isTargetDevice(device)) {
-                if (usbManager.hasPermission(device)) {
-                    connectToDevice(device);
-                } else {
-                    requestPermission(device);
-                }
-                return;
-            }
-        }
-    }
-
-    private boolean isTargetDevice(UsbDevice device) {
-        return device.getVendorId() == TARGET_VENDOR_ID && device.getProductId() == TARGET_PRODUCT_ID;
-    }
-
-    private void requestPermission(UsbDevice device) {
-        devicePendingPermission = device;
-        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
-        PendingIntent intent = PendingIntent.getBroadcast(mainActivity, 0, new Intent(ACTION_USB_PERMISSION), flags);
-        usbManager.requestPermission(device, intent);
+        findAndConnectToTargetDevice(); // Check if the device is already connected
     }
 
     private void registerUsbReceiver() {
@@ -112,17 +88,30 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             mainActivity.registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED);
         } else {
-            mainActivity.registerReceiver(receiver, filter);
+            ContextCompat.registerReceiver(mainActivity, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
         }
     }
 
+    private boolean isTargetDevice(UsbDevice device) {
+        return device.getVendorId() == TARGET_VENDOR_ID && device.getProductId() == TARGET_PRODUCT_ID;
+    }
+
+    boolean isDeviceConnected() {
+        return serialPort != null && serialPort.isOpen();
+    }
+
+    private void requestPermission(UsbDevice device) {
+        devicePendingPermission = device;
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
+        PendingIntent intent = PendingIntent.getBroadcast(mainActivity, 0, new Intent(ACTION_USB_PERMISSION), flags);
+        usbManager.requestPermission(device, intent);
+    }
+
     private void connectToDevice(UsbDevice device) {
-        if (isDeviceConnected()) closeSerialPort();
+        if (isDeviceConnected()) { closeSerialPort(); }
 
         UsbSerialDriver driver = UsbSerialProber.getDefaultProber().probeDevice(device);
-        if (driver == null || driver.getPorts().isEmpty()) {
-            return;
-        }
+        if (driver == null || driver.getPorts().isEmpty()) { return; }
 
         serialPort = driver.getPorts().get(0);
         UsbDeviceConnection connection = usbManager.openDevice(device);
@@ -143,8 +132,19 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         }
     }
 
-    boolean isDeviceConnected() {
-        return serialPort != null && serialPort.isOpen();
+    private void findAndConnectToTargetDevice() {
+        List<UsbSerialDriver> drivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
+        for (UsbSerialDriver driver : drivers) {
+            UsbDevice device = driver.getDevice();
+            if (isTargetDevice(device)) {
+                if (usbManager.hasPermission(device)) {
+                    connectToDevice(device);
+                } else {
+                    requestPermission(device);
+                }
+                return;
+            }
+        }
     }
 
     void closeSerialPort() {
@@ -161,12 +161,9 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
     }
 
     void sendBytes(byte[] bytes) {
-        if (!isDeviceConnected()) {
-            mainActivity.showToast("Connect a serial device first");
-            return;
-        }
+        if (!isDeviceConnected()) { return; }
 
-        int timeout_ms = 250;
+        int timeout_ms = 100;
         try {
             serialPort.write(bytes, timeout_ms);
         } catch (IOException e) {
@@ -185,8 +182,9 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         String errorMessage = e.getMessage();
         if (e instanceof IOException && errorMessage != null
                 && errorMessage.equals("USB get_status request failed")) {
+            // Raised when a device is suddenly unplugged
             return;
         }
-        mainActivity.logMessage(LogType.ERROR, "Uncaught error in serial port: " + e.getMessage());
+        mainActivity.logMessage(LogType.ERROR, "Uncaught serial port error: " + e.getMessage());
     }
 }

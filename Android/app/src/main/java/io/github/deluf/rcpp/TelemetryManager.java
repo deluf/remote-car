@@ -33,7 +33,6 @@ public class TelemetryManager implements SensorEventListener {
     private LocationManager locationManager;
     private TelephonyManager telephonyManager;
 
-    // FIXME: Forse mandare tutto il gps, poi filtrare lato ui
     private static final int HEADING_UPDATE_INTERVAL_US = 500_000;
     private static final int MIN_LOCATION_UPDATE_INTERVAL_MS = 10_000;
     private static final int MIN_LOCATION_UPDATE_DISTANCE_M = 10;

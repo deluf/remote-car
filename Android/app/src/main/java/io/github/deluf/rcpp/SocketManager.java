@@ -24,7 +24,12 @@ public class SocketManager {
     private static final int CONTROL_PORT = 8004;
     private static final int RECONNECT_DELAY_MS = 3000;
     private static final int SOCKET_READ_TIMEOUT_MS = 1000;
-    public static final int COMMAND_LEN = 3; // Bytes
+
+    public enum Command {
+        MARCH,
+        STEER,
+        SWITCH_CAMERA
+    }
 
     private final MainActivity mainActivity;
     private final String controllerIP;
@@ -95,7 +100,9 @@ public class SocketManager {
             telemetrySocket = new Socket(address, TELEMETRY_PORT);
             mainActivity.updateTelemetrySocketStatus(true);
             telemetryReconnecting.set(false);
+            mainActivity.logMessage(LogType.FAIL_SAFE, "Connected to telemetry");
         } catch (IOException e) {
+            mainActivity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
             if (isUnknownSocketError(e)) {
                 mainActivity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
             }
@@ -126,37 +133,48 @@ public class SocketManager {
                 && !e.getMessage().contains("ECONNREFUSED"));
     }
 
-    // FIXME: This function is hard to understand
     private void startControlListener(InputStream inputStream) {
         executorService.execute(() -> {
-            byte[] read_buffer = new byte[COMMAND_LEN];
             isControlListening.set(true);
-            try {
-                while (isControlListening.get()) {
 
-                    if (controlSocket.isClosed() || !controlSocket.isConnected()) { break; }
-
-                    int bytesRead = 0;
-                    int ret;
-                    while (bytesRead < COMMAND_LEN) {
-
-                        try { ret = inputStream.read(read_buffer, bytesRead, COMMAND_LEN - bytesRead); }
-                        catch (SocketTimeoutException e) { break; } // A timeout is expected
-                        if (ret <= 0) { break; } // Connection closed
-
-                        bytesRead += ret;
-                    }
-
-                    if (bytesRead == COMMAND_LEN) {
-                        mainActivity.microcontrollerManager.sendBytes(read_buffer);
-                    }
+            int maxCommandLen = 3;
+            byte[] readBuffer = new byte[maxCommandLen]; // Only allocate it once for all the commands
+            while (isControlListening.get()) {
+                try { recvCommand(inputStream, readBuffer); }
+                catch (SocketTimeoutException ignored) { }
+                catch (IOException e) {
+                    mainActivity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
+                    break;
                 }
-            } catch (IOException e) {
-                mainActivity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
-            } finally {
-                scheduleControlReconnect();
             }
+
+            scheduleControlReconnect();
         });
+    }
+
+    private void recvCommand(InputStream inputStream, byte[] readBuffer) throws IOException {
+        int ret;
+        ret = inputStream.read(readBuffer, 0, 1);
+        if (ret <= 0) { throw new IOException("Connection closed"); }
+
+        if (readBuffer[0] >= Command.values().length) {
+            throw new IllegalArgumentException("Invalid command");
+        }
+        Command command = Command.values()[readBuffer[0]];
+
+        if (command == Command.MARCH || command == Command.STEER) {
+            // Read two more bytes: direction and speed
+            int bytesRead = 1;
+            while (bytesRead < 3) {
+                ret = inputStream.read(readBuffer, bytesRead, 3 - bytesRead);
+                if (ret <= 0) { throw new IOException("Connection closed"); }
+                bytesRead += ret;
+            }
+            mainActivity.microcontrollerManager.sendBytes(readBuffer);
+        }
+        else if (command == Command.SWITCH_CAMERA) {
+            mainActivity.switchCamera();
+        }
     }
 
     private void scheduleVideoStreamReconnect() {
@@ -221,10 +239,8 @@ public class SocketManager {
             try {
                 DatagramPacket packet = new DatagramPacket(data, data.length, videoStreamAddress);
                 videoStreamSocket.send(packet);
-            } catch (IOException e) {
-                mainActivity.logMessage(LogType.ERROR, "Failed to send video stream data: " + e.getMessage());
-                scheduleVideoStreamReconnect();
             }
+            catch (IOException e) { scheduleVideoStreamReconnect(); }
         });
     }
 
@@ -244,10 +260,8 @@ public class SocketManager {
             try {
                 DatagramPacket packet = new DatagramPacket(data, data.length, audioStreamAddress);
                 audioStreamSocket.send(packet);
-            } catch (IOException e) {
-                mainActivity.logMessage(LogType.ERROR, "Failed to send audio stream data: " + e.getMessage());
-                scheduleAudioStreamReconnect();
             }
+            catch (IOException e) { scheduleAudioStreamReconnect(); }
         });
     }
 
@@ -262,10 +276,8 @@ public class SocketManager {
         executorService.execute(() -> {
             try {
                 telemetrySocket.getOutputStream().write(telemetryData, 0, telemetryData.length);
-            } catch (IOException e) {
-                mainActivity.logMessage(LogType.ERROR, "Failed to send telemetry data: " + e.getMessage());
-                scheduleTelemetryReconnect();
             }
+            catch (IOException e) { scheduleTelemetryReconnect(); }
         });
     }
 
