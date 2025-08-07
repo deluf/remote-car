@@ -24,25 +24,11 @@ import androidx.core.app.ActivityCompat;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 
 import io.github.deluf.rcpp.MainActivity.LogType;
 
 public class StreamCameraManager {
-    /**
-     * Architecture overview
-     * =====================
-     * Camera Pipeline:
-     *  Device Camera -> Camera2 API -> Surface -> MediaCodec H.264 Encoder -> Raw H.264 -> UDP Stream
-     * Audio Pipeline: FIXME: magari in un file a parte
-     *  Device Microphone -> AudioRecord -> MediaCodec AAC Encoder -> Raw AAC -> UDP Stream
-     *
-     *  fixme: uniformare l'uso di public in giro, dai usarlo sempre
-     *  crasha quando si connette adruino? lol
-     */
     private static final int STREAM_WIDTH = 320;
     private static final int STREAM_HEIGHT = 240;
     private static final int STREAM_BITRATE = 500_000;
@@ -52,16 +38,9 @@ public class StreamCameraManager {
     // - Lower values (e.g., 1 second) mean faster recovery but worse compression
     // - Higher values (e.g., 5 seconds) mean better compression but slower recovery
     private static final String MIME_TYPE = MediaFormat.MIMETYPE_VIDEO_AVC; // H.264
-    private static final int CAMERA_PERMISSION_REQUEST_CODE = 999;
-    // This integer is used to identify the camera permission request when the result
-    //  comes back in onRequestPermissionsResult. It can be any unique integer.
-    // This is required because "camera" is considered by Android as a "dangerous" permission,
-    //  i.e., a permission that must be granted at run-time by the user
-    private final MainActivity activity;
+    private final MainActivity mainActivity;
     // Needed for Context (e.g., to get system services, request permissions),
     //  and for UI interactions (logging messages, showing toasts)
-    private final SocketManager socketManager;
-    // My custom socket manager class
     private final CameraManager cameraManager;
     // This is the entry point to the Camera2 API, used to discover, open, and manage camera devices
     private CameraDevice cameraDevice;
@@ -77,23 +56,25 @@ public class StreamCameraManager {
     // Camera operations (opening, capturing, processing) can be blocking and time-consuming.
     // Performing them on the main UI thread would lead to Application Not Responding (ANR)
     //  errors and a poor user experience.
-    private final Semaphore cameraResourceLock = new Semaphore(1); //FIXME: Really needed?
     private boolean isStreaming = false; // FIXME: really needed?
 
-    public StreamCameraManager(MainActivity activity, SocketManager socketManager) {
-        this.activity = activity;
-        this.socketManager = socketManager;
-        this.cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
+    public enum LensFacing {
+        FRONT,
+        BACK
     }
+    private final LensFacing lensFacing;
 
-    public void startStreaming() {
+    public StreamCameraManager(MainActivity mainActivity, LensFacing lensFacing) {
+        this.mainActivity = mainActivity;
+        this.cameraManager = (CameraManager) mainActivity.getSystemService(Context.CAMERA_SERVICE);
+        this.lensFacing = lensFacing;
         startBackgroundThread();
         setupEncoder();
         openCamera();
     }
 
     private void startBackgroundThread() {
-        backgroundThread = new HandlerThread("videoStreamer");
+        backgroundThread = new HandlerThread(lensFacing.name() + "_CAMERA_STREAMER");
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
     }
@@ -120,7 +101,6 @@ public class StreamCameraManager {
             format.setInteger(MediaFormat.KEY_BIT_RATE, STREAM_BITRATE);
             format.setInteger(MediaFormat.KEY_FRAME_RATE, STREAM_FRAMERATE);
             format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL_S);
-            //format.setInteger(MediaFormat.KEY_ROTATION, 270); // Fixme: this has no effect??'
 
             // Parameters of the H.264 encoder:
             // - AVCProfileBaseline provides fast processing times (but no the maximum compression)
@@ -138,9 +118,9 @@ public class StreamCameraManager {
             encoder.setCallback(encoderCallback, backgroundHandler);
 
             encoder.start(); // The encoder now waits for the frames to arrive
-            activity.logMessage(LogType.INFO, "H.264 encoder initialized");
         } catch (IOException e) {
-            activity.logMessage(LogType.ERROR, "Failed to initialize H.264 encoder: " + e.getMessage());
+            mainActivity.logMessage(LogType.ERROR, "Failed to initialize "
+                    + lensFacing.name() + " H.264 encoder: " + e.getMessage());
         }
     }
 
@@ -162,58 +142,56 @@ public class StreamCameraManager {
                     byte[] data = new byte[info.size];
                     outputBuffer.position(info.offset);
                     outputBuffer.get(data, 0, info.size);
-                    socketManager.sendVideoStream(data);
+                    mainActivity.socketManager.sendVideoStream(data);
                 }
                 // Tell the encoder that you're done with the output buffer.
                 codec.releaseOutputBuffer(index, false);
             } catch (Exception e) {
-                activity.logMessage(LogType.ERROR, "Error processing H.264 output: " + e.getMessage());
+                mainActivity.logMessage(LogType.ERROR, "Error processing "
+                        + lensFacing.name() + " H.264 output: " + e.getMessage());
             }
         }
         @Override
         public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
-            activity.logMessage(LogType.ERROR, "H.264 encoder error: " + e.getMessage());
+            mainActivity.logMessage(LogType.ERROR, lensFacing.name() + " H.264 encoder error: " + e.getMessage());
         }
         @Override
         public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
-            // This callback is invoked if the output format of the encoder changes during operation.
-            activity.logMessage(LogType.WARNING, "H.264 encoder output format changed: " + format);
+            // This callback is invoked if the output format of the encoder changes during operation
         }
     };
 
     private void openCamera() {
         try {
-            int unlockTimeout = 5000;
-            if (!cameraResourceLock.tryAcquire(unlockTimeout, TimeUnit.MILLISECONDS)) {
-                activity.logMessage(LogType.ERROR, "Failed to open the camera: another thread is using it");
-                return; // FIXME: maybe stopStreaming() or openCamera()
-            }
-
             // Checks for camera permission
-            if (ActivityCompat.checkSelfPermission(activity, Manifest.permission.CAMERA)
+            if (ActivityCompat.checkSelfPermission(mainActivity, Manifest.permission.CAMERA)
                     != PackageManager.PERMISSION_GRANTED) {
                 // Requests the permission if not granted
-                ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.CAMERA},
-                        CAMERA_PERMISSION_REQUEST_CODE);
-                cameraResourceLock.release();
+                ActivityCompat.requestPermissions(mainActivity, new String[]{Manifest.permission.CAMERA},
+                        lensFacing.ordinal());
                 return; // Wait for the user's response
             }
 
             String cameraId = setUpCamera();
+            mainActivity.logMessage(LogType.INFO, "Opening " + lensFacing.name() + " camera as " + cameraId);
             //FIXME: again to the same backgroundHandler? it's also doing h264 callbacks
             cameraManager.openCamera(cameraId, cameraCallback, backgroundHandler);
         } catch (Exception e) {
-            cameraResourceLock.release();
-            activity.logMessage(LogType.ERROR, "Error opening camera: " + e.getMessage());
+            mainActivity.logMessage(LogType.ERROR, "Error opening " +
+                    lensFacing.name() + " camera: " + e.getMessage());
         }
     }
 
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+        // The request code integer is used to identify the camera permission request when the result
+        //  comes back in onRequestPermissionsResult. It can be any unique integer.
+        // This is required because "camera" is considered by Android as a "dangerous" permission,
+        //  i.e., a permission that must be granted at run-time by the user
+        if (requestCode == lensFacing.ordinal()) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 openCamera();
             } else {
-                activity.showToast("Camera permission is required for streaming");
+                mainActivity.logMessage(LogType.ERROR, lensFacing.name() + " camera permission is required for streaming");
             }
         }
     }
@@ -223,9 +201,15 @@ public class StreamCameraManager {
             CameraCharacteristics characteristics = cameraManager.getCameraCharacteristics(cameraId);
 
             Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
-            if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
-                continue;
-            }
+            if (facing == null) { continue; }
+
+            // Android inverts the lens facing:
+            // - The "front" camera is the selfie camera
+            // - The "back" camera is the main camera
+            boolean rightCamera =
+                (facing == CameraCharacteristics.LENS_FACING_BACK && lensFacing == LensFacing.FRONT)
+                || (facing == CameraCharacteristics.LENS_FACING_FRONT && lensFacing == LensFacing.BACK);
+            if (!rightCamera) { continue; }
 
             // Determine what output resolutions and formats the camera supports.
             StreamConfigurationMap map = characteristics.get(
@@ -245,8 +229,8 @@ public class StreamCameraManager {
             }
 
             if (!sizeSupported) {
-                throw new Exception("Camera " + cameraId + " doesn't directly support "
-                        + STREAM_WIDTH + "x" + STREAM_HEIGHT);
+                throw new Exception(lensFacing.name() + " camera " + cameraId +
+                        " doesn't directly support " + STREAM_WIDTH + "x" + STREAM_HEIGHT);
             }
 
             return cameraId;
@@ -259,29 +243,31 @@ public class StreamCameraManager {
         @Override
         public void onOpened(@NonNull CameraDevice camera) {
             // Called after the camera got successfully opened
-            cameraResourceLock.release();
             cameraDevice = camera;
-            createCaptureSession(); // FIXME: just pass camera???
+            if (lensFacing == LensFacing.FRONT) {
+                mainActivity.updateFrontCameraStatus(true, STREAM_WIDTH + "x" + STREAM_HEIGHT + " @ " + STREAM_FRAMERATE + "fps");
+            }
+            else {
+                mainActivity.updateBackCameraStatus(true, STREAM_WIDTH + "x" + STREAM_HEIGHT + " @ " + STREAM_FRAMERATE + "fps");
+            }
         }
 
         @Override
         public void onDisconnected(CameraDevice camera) {
-            cameraResourceLock.release();
             camera.close();
             cameraDevice = null;
-            activity.logMessage(LogType.ERROR, "Camera disconnected");
+            mainActivity.logMessage(LogType.ERROR, lensFacing.name() + " camera disconnected");
         }
 
         @Override
         public void onError(CameraDevice camera, int error) {
-            cameraResourceLock.release();
             camera.close();
             cameraDevice = null;
-            activity.logMessage(LogType.ERROR, "Camera error: " + error);
+            mainActivity.logMessage(LogType.ERROR, lensFacing.name() + " camera error: " + error);
         }
     };
 
-    private void createCaptureSession() {
+    void startStreaming() {
         try {
             // TEMPLATE_RECORD is suitable for video recording or continuous frame capture.
             CaptureRequest.Builder captureRequestBuilder =
@@ -311,66 +297,64 @@ public class StreamCameraManager {
                                 // backgroundHandler ensures that the requests are processed off the main thread //FIXME: Too much stuff running on background?
                                 captureSession.setRepeatingRequest(captureRequest, null, backgroundHandler);
                                 isStreaming = true;
-                                activity.logMessage(LogType.INFO, "H.264 camera streaming started at " +
-                                        STREAM_WIDTH + "x" + STREAM_HEIGHT + " @ " + STREAM_FRAMERATE + "fps");
+
                                 // FIXME: maybe UI update
                             } catch (CameraAccessException e) {
-                                activity.logMessage(LogType.ERROR, "Error starting capture: " + e.getMessage());
+                                mainActivity.logMessage(LogType.ERROR, lensFacing.name()
+                                        + " camera - Error starting capture: " + e.getMessage());
                             }
                         }
 
                         @Override
                         public void onConfigureFailed(@NonNull CameraCaptureSession session) {
-                            activity.logMessage(LogType.ERROR, "Camera capture session configuration failed");
+                            mainActivity.logMessage(LogType.ERROR, lensFacing.name()
+                                    + " camera capture session configuration failed");
                         }
-                    }, null); // This code is already running on the background thread
+                    }, backgroundHandler); // This code is already running on the background thread
         } catch (CameraAccessException e) {
-            activity.logMessage(LogType.ERROR, "Error creating capture session: " + e.getMessage());
+            mainActivity.logMessage(LogType.ERROR, lensFacing.name()
+                    + " camera - Error creating capture session: " + e.getMessage());
         }
     }
 
-    private final CameraCaptureSession.StateCallback captureSessionCallback = new CameraCaptureSession.StateCallback() {
-        @Override
-        public void onConfigureFailed(@NonNull CameraCaptureSession session) {
+    // In StreamCameraManager.java
 
-        }
-        @Override
-        public void onConfigured(@NonNull CameraCaptureSession session) {
-
-        }
-    };
-
-
-
-
-
+    // 1. Modify stopStreaming() to ONLY stop the capture session.
     public void stopStreaming() {
-        isStreaming = false; // Important to set this first to stop processing more frames
-        closeCamera();
-        closeEncoder();
-        stopBackgroundThread();
-        activity.logMessage(LogType.INFO, "H.264 camera streaming stopped");
+        if (!isStreaming || captureSession == null) return;
+
+        try {
+            captureSession.stopRepeating(); // Stop sending frames
+        } catch (CameraAccessException e) {
+            mainActivity.logMessage(LogType.ERROR, lensFacing.name()
+                    + " camera - Error stopping repeating request: " + e.getMessage());
+        }
+        isStreaming = false;
+        // DO NOT close the session, camera, encoder, or thread here.
     }
 
-    private void closeCamera() {
-        try {
-            cameraResourceLock.acquire(); // Ensure exclusive access for closing.
-            // WHY close in this order: Generally, stop the session, then close the device,
-            // then release the Surface. This unwinds the setup order.
-            if (captureSession != null) {
+    // 2. Create a new destroy() method for full cleanup.
+    public void destroy() {
+        isStreaming = false; // Important to set this first
+
+        if (captureSession != null) {
+            try {
+                captureSession.stopRepeating();
                 captureSession.close();
-                captureSession = null;
+            } catch (Exception e) {
+                // Log error
             }
-            if (cameraDevice != null) {
-                cameraDevice.close();
-                cameraDevice = null;
-            }
-        } catch (InterruptedException e) {
-            activity.logMessage(LogType.ERROR, "Interrupted while closing camera: " + e.getMessage());
-            Thread.currentThread().interrupt(); // Preserve interrupt status.
-        } finally {
-            cameraResourceLock.release(); // CRITICAL: Always release the lock.
+            captureSession = null;
         }
+
+        if (cameraDevice != null) {
+            cameraDevice.close();
+            cameraDevice = null;
+        }
+
+        closeEncoder(); // Your existing closeEncoder is fine
+        stopBackgroundThread(); // Your existing stopBackgroundThread is fine
+        mainActivity.logMessage(LogType.INFO, lensFacing.name() + " camera manager destroyed.");
     }
 
     private void closeEncoder() {
@@ -383,7 +367,8 @@ public class StreamCameraManager {
                 encoder.stop();
                 encoder.release();
             } catch (Exception e) {
-                activity.logMessage(LogType.ERROR, "Error stopping encoder: " + e.getMessage());
+                mainActivity.logMessage(LogType.ERROR, lensFacing.name()
+                        + " camera - Error stopping encoder: " + e.getMessage());
             }
             encoder = null;
         }
@@ -401,15 +386,10 @@ public class StreamCameraManager {
                 backgroundThread = null;
                 backgroundHandler = null;
             } catch (InterruptedException e) {
-                activity.logMessage(LogType.ERROR, "Error stopping camera thread: " + e.getMessage());
+                mainActivity.logMessage(LogType.ERROR, lensFacing.name()
+                        + " camera - Error stopping camera thread: " + e.getMessage());
                 Thread.currentThread().interrupt();
             }
         }
-    }
-
-    public void destroy() {
-        // WHY: This method should be called when the component managing this (e.g., Activity or Fragment)
-        // is being destroyed, to ensure all resources are released and background tasks are stopped.
-        stopStreaming();
     }
 }

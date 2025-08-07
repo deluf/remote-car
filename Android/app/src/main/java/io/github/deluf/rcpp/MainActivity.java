@@ -4,6 +4,8 @@ import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -12,14 +14,17 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 @SuppressLint("SetTextI18n")
 public class MainActivity extends AppCompatActivity {
 
+    // FIXME: Nota, le autorizzazioni per telefono, posizione e microfono vanno date a mano nella ui di sistema???
+    // attention please, telemetry smette a caso di funzionare se manca banda per un po
     private static final String TARGET_DEVICE_NAME = "Arduino UNO R3";
     private static final String CONTROLLER_IP = "100.92.38.63"; // Tailscale's IP of my computer
     private static final int CLEAR_MONITOR_THRESHOLD_LINES = 1000;
@@ -32,18 +37,19 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView microcontrollerStatus;
     private TextView serverStatus;
+    private TextView frontCameraStatus;
     private TextView backCameraStatus;
     private TextView telemetrySocketStatus;
     private TextView controlSocketStatus;
     private TextView logsMonitor;
     private Button startApplicationButton;
-    private StreamCameraManager streamCameraManager;
-
+    private StreamCameraManager frontCameraManager;
+    private StreamCameraManager backCameraManager;
+    private StreamCameraManager.LensFacing currentLensFacing;
     private ServerManager serverManager;
     public MicrocontrollerManager microcontrollerManager;
     public SocketManager socketManager;
     public TelemetryManager telemetryManager;
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,27 +60,28 @@ public class MainActivity extends AppCompatActivity {
         serverManager = new ServerManager(this, CONTROLLER_IP);
         microcontrollerManager = new MicrocontrollerManager(this);
         socketManager = new SocketManager(this, CONTROLLER_IP);
-        streamCameraManager = new StreamCameraManager(this);
+        backCameraManager = new StreamCameraManager(this, StreamCameraManager.LensFacing.BACK);
+        frontCameraManager = new StreamCameraManager(this, StreamCameraManager.LensFacing.FRONT);
         telemetryManager = new TelemetryManager(this);
     }
 
     private void initViews() {
         microcontrollerStatus = findViewById(R.id.textview_serial_status);
         serverStatus = findViewById(R.id.textview_controller_status);
+        frontCameraStatus = findViewById(R.id.textview_front_camera_status);
         backCameraStatus = findViewById(R.id.textview_back_camera_status);
         telemetrySocketStatus = findViewById(R.id.textview_telemetry_socket_status);
         controlSocketStatus = findViewById(R.id.textview_control_socket_status);
         logsMonitor = findViewById(R.id.textview_logs_monitor);
         startApplicationButton = findViewById(R.id.start_application);
 
-        startApplicationButton.setEnabled(true); // FIXME
-
         logsMonitor.setMovementMethod(new ScrollingMovementMethod());
-
+        startApplicationButton.setEnabled(true); // FIXME
         startApplicationButton.setOnClickListener(v -> startApplication());
 
         updateServerStatus(false);
         updateMicrocontrollerStatus(false);
+        updateFrontCameraStatus(false, "");
         updateBackCameraStatus(false, "");
         updateTelemetrySocketStatus(false);
         updateControlSocketStatus(false);
@@ -103,6 +110,19 @@ public class MainActivity extends AppCompatActivity {
                 microcontrollerStatus.setText("UNPLUGGED");
             }
             //startApplication.setEnabled(plugged_in && controllerManager.isOnline()); FIXME
+        });
+    }
+
+    void updateFrontCameraStatus(boolean ready, String details) {
+        runOnUiThread(() -> {
+            if (ready) {
+                frontCameraStatus.setTextColor(COLOR_GREEN);
+                frontCameraStatus.setText(details);
+            } else {
+                frontCameraStatus.setTextColor(COLOR_RED);
+                frontCameraStatus.setText("NOT CONFIGURED");
+            }
+            //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
         });
     }
 
@@ -149,13 +169,48 @@ public class MainActivity extends AppCompatActivity {
         startApplicationButton.setEnabled(false);
 
         serverManager.stopControllerMonitoring();
-        runOnUiThread(() -> {
-            serverStatus.setTextColor(COLOR_GRAY);
-            serverStatus.setText("-");
-        });
-
         telemetryManager.startCollecting();
-        streamCameraManager.startStreaming();
+
+        this.currentLensFacing = StreamCameraManager.LensFacing.FRONT;
+        frontCameraManager.startStreaming();
+
+        /*
+        new Handler().postDelayed(() -> {
+            logMessage(LogType.INFO, "Switched to BACK camera");
+            frontCameraManager.stopStreaming();
+            backCameraManager.startStreaming();
+            frontCameraManager = new StreamCameraManager(this, StreamCameraManager.LensFacing.FRONT);
+            currentLensFacing = StreamCameraManager.LensFacing.BACK;
+
+            new Handler().postDelayed(() -> {
+                logMessage(LogType.INFO, "Switched to FRONT camera");
+                backCameraManager.stopStreaming();
+                frontCameraManager.startStreaming();
+                backCameraManager = new StreamCameraManager(this, StreamCameraManager.LensFacing.BACK);
+                currentLensFacing = StreamCameraManager.LensFacing.FRONT;
+            },10000);
+        },10000);
+         */
+    }
+
+    public void switchCamera() {
+        if (currentLensFacing == StreamCameraManager.LensFacing.FRONT) {
+            logMessage(LogType.INFO, "Switching to BACK camera");
+            frontCameraManager.destroy();
+            backCameraManager.startStreaming();
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                frontCameraManager = new StreamCameraManager(this, StreamCameraManager.LensFacing.FRONT);
+            },500);
+            currentLensFacing = StreamCameraManager.LensFacing.BACK;
+        } else {
+            logMessage(LogType.INFO, "Switching to FRONT camera");
+            backCameraManager.destroy();
+            frontCameraManager.startStreaming();
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                backCameraManager = new StreamCameraManager(this, StreamCameraManager.LensFacing.BACK);
+            },500);
+            currentLensFacing = StreamCameraManager.LensFacing.FRONT;
+        }
     }
 
     enum LogType {
@@ -220,14 +275,15 @@ public class MainActivity extends AppCompatActivity {
         writeToTextView(logsMonitor, type, message);
     }
 
-    void showToast(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-    }
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        streamCameraManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == StreamCameraManager.LensFacing.FRONT.ordinal()) {
+            frontCameraManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+        else if (requestCode == StreamCameraManager.LensFacing.BACK.ordinal()) {
+            backCameraManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
     }
 
     @Override
@@ -236,19 +292,18 @@ public class MainActivity extends AppCompatActivity {
         serverManager.stopControllerMonitoring();
         microcontrollerManager.closeSerialPort();
         socketManager.destroy();
-        streamCameraManager.stopStreaming();
+        frontCameraManager.destroy();
+        backCameraManager.destroy();
         telemetryManager.stopCollecting();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        serverManager.pauseControllerMonitoring();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        serverManager.resumeControllerMonitoring();
     }
 }
