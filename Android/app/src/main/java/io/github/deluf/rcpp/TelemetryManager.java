@@ -51,7 +51,7 @@ public class TelemetryManager implements SensorEventListener {
 
     private enum Metric {
         BATTERY_PERCENT,    // [0-100]   | int
-        BATTERY_TEMP,       // celsius   | int
+        CPU_TEMP,           // celsius   | int
         POSITION,           // LATITUDE  | float,
                             // LONGITUDE | float,
                             // ACCURACY  | int
@@ -155,16 +155,9 @@ public class TelemetryManager implements SensorEventListener {
         public void onReceive(Context context, Intent intent) {
             int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
             int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            int rawTemperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1);
-
             if (level != -1 && scale != -1) {
                 int chargePercentage = (level * 100) / scale;
                 updateMetricIfChanged(Metric.BATTERY_PERCENT, chargePercentage);
-            }
-
-            if (rawTemperature != -1) {
-                int temperature = rawTemperature / 10; // rawTemperature is in tenths of degrees
-                updateMetricIfChanged(Metric.BATTERY_TEMP, temperature);
             }
         }
     };

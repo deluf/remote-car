@@ -20,8 +20,7 @@ import io.github.deluf.rcpp.MainActivity.LogType;
 public class SocketManager {
     private static final int VIDEO_STREAM_PORT = 8001;
     private static final int AUDIO_STREAM_PORT = 8002;
-    private static final int TELEMETRY_PORT = 8003;
-    private static final int CONTROL_PORT = 8004;
+    private static final int CONTROL_PORT = 8003;
     private static final int RECONNECT_DELAY_MS = 3000;
     private static final int SOCKET_READ_TIMEOUT_MS = 1000;
 
@@ -39,7 +38,6 @@ public class SocketManager {
     private volatile InetSocketAddress videoStreamAddress;
     private volatile InetSocketAddress audioStreamAddress;
 
-    private volatile Socket telemetrySocket;
     private volatile Socket controlSocket;
 
     private final ExecutorService executorService;
@@ -47,7 +45,6 @@ public class SocketManager {
 
     private final AtomicBoolean videoStreamReconnecting = new AtomicBoolean(false);
     private final AtomicBoolean audioStreamReconnecting = new AtomicBoolean(false);
-    private final AtomicBoolean telemetryReconnecting = new AtomicBoolean(false);
     private final AtomicBoolean controlReconnecting = new AtomicBoolean(false);
     private final AtomicBoolean isControlListening = new AtomicBoolean(false);
 
@@ -63,7 +60,6 @@ public class SocketManager {
         executorService.execute(() -> {
             initializeVideoStreamSocket();
             initializeAudioStreamSocket();
-            initializeTelemetrySocket();
             initializeControlSocket();
         });
     }
@@ -94,23 +90,6 @@ public class SocketManager {
         }
     }
 
-    private void initializeTelemetrySocket() {
-        try {
-            InetAddress address = InetAddress.getByName(controllerIP);
-            telemetrySocket = new Socket(address, TELEMETRY_PORT);
-            mainActivity.updateTelemetrySocketStatus(true);
-            telemetryReconnecting.set(false);
-            mainActivity.logMessage(LogType.FAIL_SAFE, "Connected to telemetry");
-        } catch (IOException e) {
-            mainActivity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
-            if (isUnknownSocketError(e)) {
-                mainActivity.logMessage(LogType.ERROR, "Telemetry socket error: " + e.getMessage());
-            }
-            telemetryReconnecting.set(false);
-            scheduleTelemetryReconnect();
-        }
-    }
-
     private void initializeControlSocket() {
         try {
             InetAddress address = InetAddress.getByName(controllerIP);
@@ -120,9 +99,10 @@ public class SocketManager {
             mainActivity.updateControlSocketStatus(true);
             controlReconnecting.set(false);
         } catch (IOException e) {
-            if (isUnknownSocketError(e)) {
-                mainActivity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
-            }
+            mainActivity.logMessage(LogType.ERROR, "Unknown control socket error: " + e.getMessage());
+            //if (isUnknownSocketError(e)) {
+            //    mainActivity.logMessage(LogType.ERROR, "Unknown control socket error: " + e.getMessage());
+            //} FIXME:
             controlReconnecting.set(false);
             scheduleControlReconnect();
         }
@@ -187,12 +167,6 @@ public class SocketManager {
         reconnectExecutor.schedule(this::initializeAudioStreamSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
-    private void scheduleTelemetryReconnect() {
-        if (!telemetryReconnecting.compareAndSet(false, true)) return;
-        mainActivity.updateTelemetrySocketStatus(false);
-        reconnectExecutor.schedule(this::initializeTelemetrySocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
-    }
-
     private void scheduleControlReconnect() {
         if (!controlReconnecting.compareAndSet(false, true)) return;
         mainActivity.updateControlSocketStatus(false);
@@ -208,7 +182,6 @@ public class SocketManager {
         executorService.execute(() -> {
             try {
                 if (controlSocket != null) controlSocket.close();
-                if (telemetrySocket != null) telemetrySocket.close();
                 if (videoStreamSocket != null) videoStreamSocket.close();
                 if (audioStreamSocket != null) audioStreamSocket.close();
             } catch (IOException e) {
@@ -220,7 +193,6 @@ public class SocketManager {
             executorService.shutdown();
         }
         mainActivity.updateControlSocketStatus(false);
-        mainActivity.updateTelemetrySocketStatus(false);
     }
 
     void sendVideoStream(byte[] data) {
@@ -266,18 +238,18 @@ public class SocketManager {
     }
 
     public void sendTelemetryData(byte[] telemetryData) {
-        if (telemetrySocket == null || !telemetrySocket.isConnected()) {
-            if (!telemetryReconnecting.get()) {
-                scheduleTelemetryReconnect();
+        if (controlSocket == null || !controlSocket.isConnected()) {
+            if (!controlReconnecting.get()) {
+                scheduleControlReconnect();
             }
             return;
         }
 
         executorService.execute(() -> {
             try {
-                telemetrySocket.getOutputStream().write(telemetryData, 0, telemetryData.length);
+                controlSocket.getOutputStream().write(telemetryData, 0, telemetryData.length);
             }
-            catch (IOException e) { scheduleTelemetryReconnect(); }
+            catch (IOException e) { scheduleControlReconnect(); }
         });
     }
 

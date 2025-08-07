@@ -18,7 +18,7 @@ def perror(error, prefix=None):
     Returns:
         None
     """
-    print(f"{COLOR_RED}{f"[{prefix}]" if prefix is not None else ""} {error}{COLOR_RESET}", file=sys.stderr)
+    print(f"{COLOR_RED}{f"[{prefix}] " if prefix is not None else ""}{error}{COLOR_RESET}", file=sys.stderr)
 
 def _prefix_stderr(process, prefix):
     with process.stderr:

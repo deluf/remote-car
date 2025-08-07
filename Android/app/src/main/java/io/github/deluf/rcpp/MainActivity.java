@@ -18,8 +18,6 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
 @SuppressLint("SetTextI18n")
 public class MainActivity extends AppCompatActivity {
 
@@ -39,7 +37,6 @@ public class MainActivity extends AppCompatActivity {
     private TextView serverStatus;
     private TextView frontCameraStatus;
     private TextView backCameraStatus;
-    private TextView telemetrySocketStatus;
     private TextView controlSocketStatus;
     private TextView logsMonitor;
     private Button startApplicationButton;
@@ -70,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
         serverStatus = findViewById(R.id.textview_controller_status);
         frontCameraStatus = findViewById(R.id.textview_front_camera_status);
         backCameraStatus = findViewById(R.id.textview_back_camera_status);
-        telemetrySocketStatus = findViewById(R.id.textview_telemetry_socket_status);
         controlSocketStatus = findViewById(R.id.textview_control_socket_status);
         logsMonitor = findViewById(R.id.textview_logs_monitor);
         startApplicationButton = findViewById(R.id.start_application);
@@ -83,7 +79,6 @@ public class MainActivity extends AppCompatActivity {
         updateMicrocontrollerStatus(false);
         updateFrontCameraStatus(false, "");
         updateBackCameraStatus(false, "");
-        updateTelemetrySocketStatus(false);
         updateControlSocketStatus(false);
     }
 
@@ -134,19 +129,6 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 backCameraStatus.setTextColor(COLOR_RED);
                 backCameraStatus.setText("NOT CONFIGURED");
-            }
-            //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
-        });
-    }
-
-    void updateTelemetrySocketStatus(boolean connected) {
-        runOnUiThread(() -> {
-            if (connected) {
-                telemetrySocketStatus.setTextColor(COLOR_GREEN);
-                telemetrySocketStatus.setText("CONNECTED");
-            } else {
-                telemetrySocketStatus.setTextColor(COLOR_RED);
-                telemetrySocketStatus.setText("NOT CONNECTED");
             }
             //startApplication.setEnabled(online && serialManager.isDeviceConnected()); FIXME
         });

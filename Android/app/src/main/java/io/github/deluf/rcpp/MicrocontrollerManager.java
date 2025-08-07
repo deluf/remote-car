@@ -161,7 +161,10 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
     }
 
     void sendBytes(byte[] bytes) {
-        if (!isDeviceConnected()) { return; }
+        if (!isDeviceConnected()) {
+            mainActivity.logMessage(LogType.WARNING, "Sending bytes to an unconnected device");
+            return;
+        }
 
         int timeout_ms = 100;
         try {
