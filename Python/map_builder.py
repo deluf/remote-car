@@ -1,16 +1,22 @@
 
+import shutil
+from printer import perror
+if shutil.which("npx") is None:
+    perror("npx is not installed or not found in PATH")
+
 import folium
 import os
 import psutil
 import subprocess
 from datetime import datetime
 
+from printer import monitor_stderr
+
+FILENAME = "map.html"
+
 class Map_Builder:
 
     def __init__(self):
-        self.FILENAME = "map.html"
-        self.PROVIDER = "OpenStreetMap"
-        
         self.background_process = None
 
         self.last_marker = None
@@ -18,13 +24,13 @@ class Map_Builder:
         self.map = folium.Map(
             location=[45.4642, 9.1900], # Milan as default center
             zoom_start=17,
-            tiles=self.PROVIDER
+            tiles="OpenStreetMap"
         )
-        self.map.save(self.FILENAME)
+        self.map.save(FILENAME)
         
     def add_waypoint(self, lat, lon, accuracy):
-        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-            print(f"Invalid coordinates: lat={lat}, lon={lon}")
+        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180) or not (accuracy >= 0):
+            perror(f"Invalid coordinates: lat={lat}, lon={lon}, accuracy={accuracy}")
             return
         
         timestamp = datetime.now()
@@ -74,7 +80,7 @@ class Map_Builder:
         # If the added waypoint is the first, stop here
         if self.last_marker is None:
             self.last_marker = marker
-            self.map.save(self.FILENAME)
+            self.map.save(FILENAME)
             return
 
         # Get the old latest waypoint
@@ -95,20 +101,23 @@ class Map_Builder:
             self.last_marker.set_icon(folium.Icon(color='blue', icon='record'))
         
         self.last_marker = marker
-        self.map.save(self.FILENAME)
+        self.map.save(FILENAME)
 
     def open_live_map(self):
         electron_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Electron'))
         cmd = ["npx", "electron", "."]
         try:
-            self.background_process = subprocess.Popen(cmd, 
-                cwd=electron_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.background_process = subprocess.Popen(cmd, cwd=electron_dir, stderr=subprocess.PIPE)
+            monitor_stderr(self.background_process, "ELECTRON")
         except Exception as e:
-            print(f"Failed to launch electron: {e}")
+            perror(f"Failed to launch electron: {e}")
 
     def close_live_map(self):
-        parent = psutil.Process(self.background_process.pid)
-        for child in parent.children(recursive=True):
-            child.kill()
-        parent.kill()
-        print("Electron process and its children terminated")
+        if self.background_process:
+            parent = psutil.Process(self.background_process.pid)
+            for child in parent.children(recursive=True):
+                child.kill()
+            parent.kill()
+            print("Electron process terminated")
+        else:
+            print("No electron process to terminate")

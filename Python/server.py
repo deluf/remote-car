@@ -4,10 +4,15 @@ import threading
 import struct
 from enum import IntEnum
 
-class Metric(IntEnum):                       # BANDWIDTH ?
+from printer import perror
+
+TELEMETRY_PORT = 8003
+CONTROL_PORT = 8004
+
+class METRIC(IntEnum):                       # BANDWIDTH ?
     BATTERY_PERCENT = 0 # [0-100]  | int           ICON + TEXT
     BATTERY_TEMP = 1    # celsius  | int           TEXT - or remove
-    POSITION = 2,       # LATITUDE  | float,
+    POSITION = 2        # LATITUDE  | float,
                         # LONGITUDE | float,
                         # ACCURACY  | int
     HEADING = 3         # degrees  | int           VIDEO - SLIDER ON TOP LIKE GEOGUESSR
@@ -16,8 +21,8 @@ class Metric(IntEnum):                       # BANDWIDTH ?
 class Server:
     def __init__(self, telemetry_callback):
         self.host = '0.0.0.0'
-        self.telemetry_port = 8003
-        self.control_port = 8004 
+        self.telemetry_port = TELEMETRY_PORT
+        self.control_port = CONTROL_PORT
         self.telemetry_callback = telemetry_callback
     
         self.telemetry_socket = None  
@@ -55,11 +60,11 @@ class Server:
                                 break
                             
                             # Raises exception on value error
-                            metric = Metric(packet[0])
+                            metric = METRIC(packet[0])
                             
                             data = b''
                             expected_bytes = 4
-                            if metric == Metric.POSITION:
+                            if metric == METRIC.POSITION:
                                 expected_bytes *= 3 # We expect three values
 
                             while len(data) < expected_bytes:
@@ -75,7 +80,7 @@ class Server:
                         except socket.timeout:
                             continue
                         except Exception as e:
-                            print(f"Telemetry client error: {e}")
+                            perror(f"Telemetry client error: {e}")
                             break
                             
                     client.close()
@@ -86,11 +91,11 @@ class Server:
                     continue
                 except Exception as e:
                     if self.running:
-                        print(f"Telemetry server error: {e}")
+                        perror(f"Telemetry server error: {e}")
                     break
                     
         except Exception as e:
-            print(f"Failed to start telemetry server: {e}")
+            perror(f"Failed to start telemetry server: {e}")
             
     def start_control_server(self):
         try:
@@ -112,11 +117,11 @@ class Server:
                     continue
                 except Exception as e:
                     if self.running:
-                        print(f"Control server error: {e}")
+                        perror(f"Control server error: {e}")
                     break
 
         except Exception as e:
-            print(f"Failed to start control server: {e}")
+            perror(f"Failed to start control server: {e}")
         
     def send_command(self, command):
         if not self.running:
@@ -135,17 +140,19 @@ class Server:
                     raise ConnectionResetError()
                 #print(f"[DEBUG] sent={command[totalsent:totalsent+sent]}")
                 totalsent = totalsent + sent
+
         except (BrokenPipeError, ConnectionResetError):
             if self.control_client:    
                 self.control_client.close()
                 self.control_client = None
             print("Control client disconnected")
+            
         except Exception as e:
-            print(f"Unable to send command: {e}")
+            perror(f"Unable to send command: {e}")
     
     def recv_telemetry(self, metric, data):
 
-        if metric == Metric.POSITION:
+        if metric == METRIC.POSITION:
             value = []
             value.append(struct.unpack('>f', data[:4])[0])  # big-endian float
             value.append(struct.unpack('>f', data[4:8])[0]) # big-endian float
@@ -161,18 +168,12 @@ class Server:
         # Close client connections
         for client in [self.telemetry_client, self.control_client]:
             if client:
-                try:
-                    client.close()
-                except:
-                    pass
+                client.close()
                 
         # Close server sockets
         for sock in [self.telemetry_socket, self.control_socket]:
             if sock:
-                try:
-                    sock.close()
-                except:
-                    pass
+                sock.close()
                     
         print("Server stopped")
 

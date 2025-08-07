@@ -5,7 +5,7 @@ os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
 import pygame
 from enum import Enum, IntEnum
 
-from server import Metric, Server
+from server import METRIC, Server
 from map_builder import Map_Builder
 from stream_manager import Stream_Manager
 
@@ -36,8 +36,9 @@ class DS4_ANALOG(Enum):
     R2 = 5      # -1 Out  -> In 1
 
 class COMMAND(IntEnum): 
-	MARCH = 0
-	STEER = 1
+    MARCH = 0
+    STEER = 1
+    SWITCH_CAMERA = 2
 
 class DIRECTION(IntEnum):
 	FORWARD = 0
@@ -45,7 +46,7 @@ class DIRECTION(IntEnum):
 	RIGHT = 2
 	LEFT = 3
 
-FPS = 10
+FPS = 30
 STICK_DEADZONE = 0.05
 TRIGGER_DEADZONE = 0.01
 
@@ -57,7 +58,7 @@ last_sent_states = {
 }
 
 def telemetry_callback(metric, value):
-    if metric == Metric.POSITION:
+    if metric == METRIC.POSITION:
         map_builder.add_waypoint(value[0], value[1], value[2])
     
     print(f"{metric.name}: {value}")
@@ -84,7 +85,7 @@ def should_send_command(analog_control, command, direction, speed):
     return True
 
 def ui_loop():
-    screen = pygame.display.set_mode((382, 450), pygame.NOFRAME)
+    pygame.display.set_mode((382, 450), pygame.NOFRAME)
     pygame.display.set_caption("RC++")
     clock = pygame.time.Clock()
 
@@ -94,9 +95,13 @@ def ui_loop():
         for event in pygame.event.get():
             
             if event.type == pygame.JOYBUTTONDOWN:
-                if DS4_DIGITAL(event.button) == DS4_DIGITAL.TOUCHPAD:
+                button = DS4_DIGITAL(event.button)
+                if button == DS4_DIGITAL.TOUCHPAD:
                     return
-                #print(f"Button {DS4_DIGITAL(event.button).name} pressed")
+                elif button == DS4_DIGITAL.TRIANGLE:
+                    print(f"Button {DS4_DIGITAL(event.button).name} pressed")
+                    server.send_command(COMMAND.SWITCH_CAMERA.to_bytes(1))
+                    camera_stream.switch()
 
             #elif event.type == pygame.JOYBUTTONUP:
                 #print(f"Button {DS4_DIGITAL(event.button).name} released")
@@ -143,17 +148,19 @@ def ui_loop():
 if __name__ == "__main__":
     pygame.init()
     
-    server = Server(telemetry_callback)
-    server.start()
-
     map_builder = Map_Builder()
     map_builder.open_live_map()
 
-    stream_manager = Stream_Manager()
-    stream_manager.play_front_camera()
+    server = Server(telemetry_callback)
+    server.start()
+
+    camera_stream = Stream_Manager()
+    camera_stream.play()
 
     ui_loop() # Blocking
+
     map_builder.close_live_map()
-    stream_manager.close_front_camera()
+    camera_stream.close()
     pygame.quit()
-    print("UI closed")
+    
+    print("Done")
