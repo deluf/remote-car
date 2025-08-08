@@ -2,7 +2,9 @@
 import os
 os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
 
+import multiprocessing
 import pygame
+import threading
 from enum import Enum, IntEnum
 
 from server import METRIC, Server
@@ -101,7 +103,7 @@ def ui_loop():
                 elif button == DS4_DIGITAL.TRIANGLE:
                     print(f"Button {DS4_DIGITAL(event.button).name} pressed")
                     server.send_command(COMMAND.SWITCH_CAMERA.to_bytes(1))
-                    camera_stream.switch()
+                    video_stream.switch()
 
             #elif event.type == pygame.JOYBUTTONUP:
                 #print(f"Button {DS4_DIGITAL(event.button).name} released")
@@ -154,13 +156,14 @@ if __name__ == "__main__":
     server = Server(telemetry_callback)
     server.start()
 
-    camera_stream = Stream_Manager()
-    camera_stream.play()
+    metrics_queue = multiprocessing.Queue()
+    video_stream = Stream_Manager(metrics_queue)
+    video_stream.play()
 
     ui_loop() # Blocking
 
     map_builder.close_live_map()
-    camera_stream.close()
+    video_stream.close()
     pygame.quit()
     
     print("Done")
