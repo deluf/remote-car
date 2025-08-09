@@ -59,18 +59,19 @@ public class TelemetryManager implements SensorEventListener {
 
     private enum Metric {
         // The sensors id of the temp metrics refers to the thermal zone id
-        MODEM_TEMP(3),          // celsius  | int
-        CAMERA_TEMP(5),         // celsius  | int
-        CPU_TEMP(6),            // celsius  | int  (Average temp of the high performance core cluster)
-        GPU_TEMP(12),           // celsius  | int
-        BATTERY_TEMP(42),       // celsius  | int
+        MODEM_TEMP(3),              // celsius  | int
+        CAMERA_TEMP(5),             // celsius  | int
+        CPU_TEMP(6),                // celsius  | int  (Average temp of the high performance core cluster)
+        GPU_TEMP(12),               // celsius  | int
+        PHONE_BATTERY_TEMP(42),     // celsius  | int
 
-        BATTERY_PERCENT(100),   // [0-100]   | int
-        POSITION(101),          // LATITUDE  | float,
-                                        // LONGITUDE | float,
-                                        // ACCURACY  | int
-        HEADING(102),           // degrees   | int
-        SIGNAL_LEVEL(103);      // [0-4]     | int
+        PHONE_BATTERY_PERCENT(100), // [0-100]   | int
+        POSITION(101),              // LATITUDE  | float,
+                                            // LONGITUDE | float,
+                                            // ACCURACY  | int
+        HEADING(102),               // degrees   | int
+        SIGNAL_LEVEL(103),          // [0-5]     | int
+        CAR_BATTERY_VOLTAGE(104);   // centiVolt | int
 
         private final int sensorId;
 
@@ -183,7 +184,7 @@ public class TelemetryManager implements SensorEventListener {
             int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
             if (level != -1 && scale != -1) {
                 int chargePercentage = (level * 100) / scale;
-                updateMetricIfChanged(Metric.BATTERY_PERCENT, chargePercentage);
+                updateMetricIfChanged(Metric.PHONE_BATTERY_PERCENT, chargePercentage);
             }
         }
     };
@@ -267,7 +268,7 @@ public class TelemetryManager implements SensorEventListener {
         readTemperature(Metric.CAMERA_TEMP);
         readTemperature(Metric.CPU_TEMP);
         readTemperature(Metric.GPU_TEMP);
-        readTemperature(Metric.BATTERY_TEMP);
+        readTemperature(Metric.PHONE_BATTERY_TEMP);
     }
 
     private void readTemperature(Metric metric) {
@@ -285,6 +286,10 @@ public class TelemetryManager implements SensorEventListener {
             mainActivity.logMessage(MainActivity.LogType.ERROR,
                     "Error reading " + metric.name() + ": " + e.getMessage());
         }
+    }
+
+    public void onNewCarBatteryVoltage(byte voltage) {
+        updateMetricIfChanged(Metric.CAR_BATTERY_VOLTAGE, (int)voltage);
     }
 
     public void stopCollecting() {

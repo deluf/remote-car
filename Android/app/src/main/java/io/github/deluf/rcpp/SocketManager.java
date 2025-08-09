@@ -174,27 +174,6 @@ public class SocketManager {
         reconnectExecutor.schedule(this::initializeControlSocket, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
-    public void destroy() {
-        if (!reconnectExecutor.isShutdown()) {
-            reconnectExecutor.shutdownNow();
-        }
-        isControlListening.set(false);
-        executorService.execute(() -> {
-            try {
-                if (controlSocket != null) controlSocket.close();
-                if (videoStreamSocket != null) videoStreamSocket.close();
-                if (audioStreamSocket != null) audioStreamSocket.close();
-            } catch (IOException e) {
-                mainActivity.logMessage(LogType.ERROR, "Error destroying sockets: " + e.getMessage());
-            }
-        });
-
-        if (!executorService.isShutdown()) {
-            executorService.shutdown();
-        }
-        mainActivity.updateControlSocketStatus(false);
-    }
-
     void sendVideoStream(byte[] data) {
         if (videoStreamSocket == null || videoStreamSocket.isClosed() || videoStreamAddress == null) {
             if (!videoStreamReconnecting.get()) {
@@ -253,4 +232,24 @@ public class SocketManager {
         });
     }
 
+    public void destroy() {
+        if (!reconnectExecutor.isShutdown()) {
+            reconnectExecutor.shutdownNow();
+        }
+        isControlListening.set(false);
+        executorService.execute(() -> {
+            try {
+                if (controlSocket != null) controlSocket.close();
+                if (videoStreamSocket != null) videoStreamSocket.close();
+                if (audioStreamSocket != null) audioStreamSocket.close();
+            } catch (IOException e) {
+                mainActivity.logMessage(LogType.ERROR, "Error destroying sockets: " + e.getMessage());
+            }
+        });
+
+        if (!executorService.isShutdown()) {
+            executorService.shutdown();
+        }
+        mainActivity.updateControlSocketStatus(false);
+    }
 }

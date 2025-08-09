@@ -168,15 +168,18 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
 
         int timeout_ms = 100;
         try {
+            mainActivity.logMessage(MainActivity.LogType.INFO,
+                    "{" + (bytes[0] & 0xFF) + ", " + (bytes[1] & 0xFF) + ", " + (bytes[2] & 0xFF) + "}");
             serialPort.write(bytes, timeout_ms);
         } catch (IOException e) {
             mainActivity.logMessage(LogType.ERROR, "Unable to write to serial: " + e.getMessage());
         }
     }
 
+    // FIXME: magari dovrei mettere le variabili usate solo nell funzioni anche altrove (invece che in cima a prescindere)
     @Override
     public void onNewData(byte[] data) {
-        // At the moment it ignores incoming serial messages
+        mainActivity.telemetryManager.onNewCarBatteryVoltage(data[0]);
     }
 
     @Override
