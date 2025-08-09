@@ -26,6 +26,7 @@ function createWindow() {
 		frame: false,
 		resizable: false,
 		alwaysOnTop: true,
+		roundedCorners: false,
 		show: true,
 		backgroundColor: '#2e3440',
 		webPreferences: {
