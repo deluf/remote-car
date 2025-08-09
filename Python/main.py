@@ -54,12 +54,36 @@ FPS = 30
 STICK_DEADZONE = 0.05
 TRIGGER_DEADZONE = 0.01
 
+red_limit = {
+    METRIC.MODEM_TEMP: 60,
+    METRIC.CAMERA_TEMP: 60,
+    METRIC.CPU_TEMP: 70,
+    METRIC.GPU_TEMP: 70,
+    METRIC.BATTERY_TEMP: 50,
+}
+orange_limit = {
+    METRIC.MODEM_TEMP: 45,
+    METRIC.CAMERA_TEMP: 45,
+    METRIC.CPU_TEMP: 55,
+    METRIC.GPU_TEMP: 55,
+    METRIC.BATTERY_TEMP: 40,
+}
 last_temps = {temp_metric: 0 for temp_metric in TEMP_METRICS}
 max_temps = {temp_metric: 0 for temp_metric in TEMP_METRICS}
 max_len = max(len(m.name.removesuffix("_TEMP")) for m in TEMP_METRICS)
 def draw_temp(surface, temp_metric, position):
-    text = f"{temp_metric.name.removesuffix("_TEMP"):<{max_len}} {last_temps[temp_metric]:>4}  {max_temps[temp_metric]:>3} °C"
+    text = f"{temp_metric.name.removesuffix("_TEMP"):<{max_len}} {" "*4}  {max_temps[temp_metric]:>3} °C"
     text_surface = PYGAME_FONT.render(text, True, (0,0,0))
+    surface.blit(text_surface, position)
+
+    text = f"{" " * max_len} {last_temps[temp_metric]:>3}"
+    if last_temps[temp_metric] >= red_limit[temp_metric]:
+        color = (180, 0, 0)
+    elif last_temps[temp_metric] >= orange_limit[temp_metric]:
+        color = (255, 140, 0)
+    else:
+        color = (0, 200, 0)
+    text_surface = PYGAME_FONT.render(text, True, color)
     surface.blit(text_surface, position)
 
 def telemetry_callback(metric, value):
