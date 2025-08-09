@@ -4,7 +4,7 @@ const path = require('path')
 const fs = require('fs')
 
 const WINDOW_WIDTH = 382
-const WINDOW_HEIGHT = 450
+const WINDOW_HEIGHT = 660
 const MAP_PATH = path.join(__dirname, '..', 'Python', 'map.html') // ../Python/map.html
 const MAP_UPDATE_INTERVAL_MS = 1000
 

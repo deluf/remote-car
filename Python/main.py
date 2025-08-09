@@ -6,9 +6,11 @@ import multiprocessing
 import pygame
 from enum import Enum, IntEnum
 
-from server import METRIC, STREAM_METRICS, Server
+from server import METRIC, STREAM_METRICS, TEMP_METRICS, Server
 from map_builder import Map_Builder
 from stream_manager import Stream_Manager
+from printer import perror
+from gamepad_viewer import Gamepad_Viewer
 
 class DS4_DIGITAL(Enum):
     X = 0
@@ -51,20 +53,25 @@ FPS = 30
 STICK_DEADZONE = 0.05
 TRIGGER_DEADZONE = 0.01
 
-# State tracking for bandwidth optimization
-last_sent_states = {
-    DS4_ANALOG.L2: None,
-    DS4_ANALOG.R2: None,
-    DS4_ANALOG.L_X: None
-}
+last_temps = {temp_metric: 0 for temp_metric in TEMP_METRICS}
+max_temps = {temp_metric: 0 for temp_metric in TEMP_METRICS}
+max_len = max(len(m.name.removesuffix("_TEMP")) for m in TEMP_METRICS)
+def draw_temp(surface, temp_metric, position):
+    text = f"{temp_metric.name.removesuffix("_TEMP"):<{max_len}} {last_temps[temp_metric]:>4}  {max_temps[temp_metric]:>3} °C"
+    text_surface = PYGAME_FONT.render(text, True, (0,0,0))
+    surface.blit(text_surface, position)
 
 def telemetry_callback(metric, value):
     if metric == METRIC.POSITION:
         map_builder.add_waypoint(value[0], value[1], value[2])
     elif metric in STREAM_METRICS:
         metrics_queue.put_nowait((metric, value))
+    elif metric in TEMP_METRICS:
+        last_temps[metric] = value
+        if max_temps[metric] < value:
+            max_temps[metric] = value
     else:
-        print(f"[UNHANDLED] {metric.name}: {value}")
+        perror(f"Unhandled metric {metric.name}: {value}")
 
 def calculate_march_speed(level):
     if level < -1 + TRIGGER_DEADZONE:
@@ -80,6 +87,12 @@ def calculate_steer_speed(level):
         return 255
     return int((abs(level)) * 127 + 128)
 
+# State tracking for bandwidth optimization
+last_sent_states = {
+    DS4_ANALOG.L2: None,
+    DS4_ANALOG.R2: None,
+    DS4_ANALOG.L_X: None
+}
 def should_send_command(analog_control, command, direction, speed):
     current_state = (command, direction, speed)
     if last_sent_states[analog_control] == current_state:
@@ -88,7 +101,7 @@ def should_send_command(analog_control, command, direction, speed):
     return True
 
 def ui_loop():
-    pygame.display.set_mode((382, 450), pygame.NOFRAME)
+    screen = pygame.display.set_mode((382, 240), pygame.NOFRAME)
     pygame.display.set_caption("RC++")
     clock = pygame.time.Clock()
 
@@ -145,12 +158,29 @@ def ui_loop():
                 print(f"Joystick {joystick.get_name()} disconnected")
                 joystick = None
         
+        # White background
+        screen.fill((255, 255, 255))
+
+        text_surface = PYGAME_FONT.render(f"{max_len * " "} LAST  MAX", True, (0,0,0))
+        screen.blit(text_surface, (50, 30))
+
+        for index, metric in enumerate(TEMP_METRICS):
+            draw_temp(screen, metric, (50, index*30 + 60))
+
         pygame.display.flip() # Update the screen
         clock.tick(FPS)
         
-if __name__ == "__main__":
+if __name__ == "__main__":    
+
     pygame.init()
-    
+
+    normal = "mx437ibmdosiso8"
+    bold = "mx437ibmvga8x16"
+    PYGAME_FONT = pygame.font.SysFont(bold, 28)
+
+    gamepad_viewer = Gamepad_Viewer()
+    gamepad_viewer.open_live_view()
+
     map_builder = Map_Builder()
     map_builder.open_live_map()
 
@@ -163,6 +193,7 @@ if __name__ == "__main__":
 
     ui_loop() # Blocking
 
+    gamepad_viewer.close_live_view()
     map_builder.close_live_map()
     video_stream.close()
     pygame.quit()

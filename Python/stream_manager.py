@@ -226,7 +226,6 @@ class Stream_Manager:
     def _telemetry_updater_thread(self):
         while True:
             (metric, value) = self.metrics_queue.get()
-            print(f"[STREAM] {metric.name}: {value}")
             self.metrics[metric] = value
 
     def _stream_reader_thread(self):
