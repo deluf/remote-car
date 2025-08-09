@@ -5,6 +5,7 @@ os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
 import multiprocessing
 import pygame
 from enum import Enum, IntEnum
+import time
 
 from server import METRIC, STREAM_METRICS, TEMP_METRICS, Server
 from map_builder import Map_Builder
@@ -100,16 +101,23 @@ def should_send_command(analog_control, command, direction, speed):
     last_sent_states[analog_control] = current_state
     return True
 
+
 def ui_loop():
     screen = pygame.display.set_mode((382, 240), pygame.NOFRAME)
     pygame.display.set_caption("RC++")
     clock = pygame.time.Clock()
 
+    has_focus = False
     joystick = None
     while True:
 
         for event in pygame.event.get():
             
+            if event.type == pygame.WINDOWFOCUSGAINED:
+                has_focus = True
+            elif event.type == pygame.WINDOWFOCUSLOST:
+                has_focus = False
+
             if event.type == pygame.JOYBUTTONDOWN:
                 button = DS4_DIGITAL(event.button)
                 if button == DS4_DIGITAL.TOUCHPAD:
@@ -158,8 +166,12 @@ def ui_loop():
                 print(f"Joystick {joystick.get_name()} disconnected")
                 joystick = None
         
-        # White background
-        screen.fill((255, 255, 255))
+        if not has_focus:
+            colors = [(255, 255, 255), (0,0,0)]
+            index = int(time.time()) % 2
+            screen.fill(colors[index])
+        else:
+            screen.fill((255, 255, 255))
 
         text_surface = PYGAME_FONT.render(f"{max_len * " "} LAST  MAX", True, (0,0,0))
         screen.blit(text_surface, (50, 30))
@@ -170,7 +182,18 @@ def ui_loop():
         pygame.display.flip() # Update the screen
         clock.tick(FPS)
         
-if __name__ == "__main__":    
+if __name__ == "__main__":
+
+    import subprocess
+
+    applescript = '''
+    tell application "iTerm2"
+        tell current window
+            set bounds to {1058, 300, 1440, 900} -- {left, top, right, bottom}
+        end tell
+    end tell
+    '''
+    subprocess.run(["osascript", "-e", applescript])
 
     pygame.init()
 
@@ -197,5 +220,14 @@ if __name__ == "__main__":
     map_builder.close_live_map()
     video_stream.close()
     pygame.quit()
-    
+
+    applescript = '''
+    tell application "iTerm2"
+        tell current window
+            set bounds to {0, 0, 1440, 900} -- {left, top, right, bottom}
+        end tell
+    end tell
+    '''
+    subprocess.run(["osascript", "-e", applescript])
+
     print("Done")
