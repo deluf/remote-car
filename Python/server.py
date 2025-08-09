@@ -7,17 +7,21 @@ from enum import IntEnum
 from printer import perror
 
 class METRIC(IntEnum):
-    MODEM_TEMP = 3           # celsius   | int
-    CAMERA_TEMP = 5          # celsius   | int
-    CPU_TEMP = 6             # celsius   | int  (Average temp of the high performance core cluster)
-    GPU_TEMP = 12            # celsius   | int
-    BATTERY_TEMP = 42        # celsius   | int
-    BATTERY_PERCENT = 100    # [0-100]   | int
-    POSITION = 101           # LATITUDE  | float,
-                             # LONGITUDE | float,
-                             # ACCURACY  | int
-    HEADING = 102            # degrees   | int
-    SIGNAL_LEVEL = 103       # [0-4]     | int
+    MODEM_TEMP = 3              # celsius   | int
+    CAMERA_TEMP = 5             # celsius   | int
+    CPU_TEMP = 6                # celsius   | int  (Average temp of the high performance core cluster)
+    GPU_TEMP = 12               # celsius   | int
+    BATTERY_TEMP = 42           # celsius   | int
+    PHONE_BATTERY_PERCENT = 100 # [0-100]   | int
+    POSITION = 101              # LATITUDE  | float,
+                                # LONGITUDE | float,
+                                # ACCURACY  | int
+    HEADING = 102               # degrees   | int
+    SIGNAL_LEVEL = 103          # [0-5]     | int
+    CAR_BATTERY_VOLTAGE = 104   # centiVolt | int
+
+# Metrics that are displayed on the video stream
+STREAM_METRICS = [METRIC.PHONE_BATTERY_PERCENT, METRIC.HEADING, METRIC.SIGNAL_LEVEL, METRIC.CAR_BATTERY_VOLTAGE]
 
 class Server:
     def __init__(self, telemetry_callback):
@@ -110,23 +114,18 @@ class Server:
             return
     
         try:
-            print("trying to send command")
             msglen = len(command)
             totalsent = 0
             while totalsent < msglen:
                 sent = self.control_client.send(command[totalsent:])
                 if sent == 0:
-                    print("sent 0")
                     raise ConnectionResetError("connection lost")
                 totalsent = totalsent + sent
-            print(f"sent {totalsent}")
         except Exception as e:
             perror(f"Unable to send command: {e}")
             self.control_client.close()
             self.control_client = None
             print("Control client disconnected")
-
-        print("done no error")
 
     def stop(self):
         self.running = False

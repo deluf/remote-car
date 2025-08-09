@@ -1,9 +1,22 @@
 
+import shutil
+from printer import perror
+if shutil.which("ffmpeg") is None:
+    perror("ffmpeg is not installed or not found in PATH")
+
 import multiprocessing
+import queue
 import av
 import cv2
+import numpy as np
+import time
+import threading
 from datetime import datetime
 from enum import Enum
+from PyQt5 import QtWidgets, QtGui, QtCore
+import sys
+
+from server import METRIC, STREAM_METRICS
 from printer import perror
 
 # Stream parameters
@@ -11,13 +24,11 @@ ORIGINAL_STREAM_WIDTH = 320
 ORIGINAL_STREAM_HEIGHT = 240
 FRAMERATE = 30
 UDP_PORT = 8001
+FRAMETIME_MS = int(1/FRAMERATE * 1000)
 
 # Device parameters
 SCREEN_WIDTH = 1440
 SCREEN_HEIGHT = 900
-FONT_BOLD = "/Users/fra/Library/Fonts/Mx437_IBM_VGA_8x16.ttf"
-FONT_NORMAL = "/Users/fra/Library/Fonts/Mx437_IBM_DOS_ISO8.ttf"
-
 SCALED_WIDTH = int(SCREEN_HEIGHT / ORIGINAL_STREAM_WIDTH * ORIGINAL_STREAM_HEIGHT)
 
 class LENS_FACING(Enum):
@@ -28,107 +39,325 @@ class FONT_SIZE(Enum):
     SMALL = 0.7
     NORMAL = 1.2
     BIG = 1.7
+    HUGE = 2.2
+
+class ICON(Enum):
+    GAS = 0
+    BATTERY_EMPTY = 1
+    BATTERY_LOW = 2
+    BATTERY_HIGH = 3
+    BATTERY_FULL = 4
+    SIGNAL_EMPTY = 5
+    SIGNAL_LOW = 6
+    SIGNAL_HIGH = 7
+    SIGNAL_FULL = 8
 
 class Stream_Manager:
 
     def __init__(self, metrics_queue):
-        self.lens_facing = LENS_FACING.FRONT
         self.metrics_queue = metrics_queue
-        self.process = None        
+        self.metrics = { metric: 0 for metric in STREAM_METRICS }
+        self.no_signal_threshold_s = 1
+        self.last_frame_time = 0
+        self.process = None
         self.font = cv2.FONT_HERSHEY_SIMPLEX
+        self.text_thickness = 2
+        self.text_color = (255, 255, 255)
+        self.border_thickness = 7
+        self.border_color = (0, 0, 0)
 
-    def _get_text_size(self, text, scale=FONT_SIZE.NORMAL, thickness=5):
-        return cv2.getTextSize(text, self.font, scale.value, thickness)[0][0]
+        # cv2.IMREAD_UNCHANGED ensures alpha channel is loaded properly
+        self.icons = { icon: cv2.imread(f"icons/{icon.name.lower()}.png", cv2.IMREAD_UNCHANGED) for icon in ICON}
 
-    def _draw_text(self, frame, text, position, size=FONT_SIZE.NORMAL, thickness=3):
-        
-        text_color=(255, 255, 255)
-        border_color=(0, 0, 0)
-        border_thickness=thickness*2
+        # Shared state between processes FIXME:
+        self.lens_facing_shared = multiprocessing.Value('i', LENS_FACING.FRONT.value)
 
+        # GUI placeholders (set in _start)
+        self.app = None
+        self.window = None
+        self.label = None
+        self.frame_queue = None
+
+    def _get_text_size(self, text, scale=FONT_SIZE.NORMAL):
+        return cv2.getTextSize(text, self.font, scale.value, self.text_thickness)[0]
+
+    def _draw_text(self, frame, text, position, size=FONT_SIZE.NORMAL):
         # Draw border (black)
         cv2.putText(frame, text, position, self.font, size.value, 
-                    border_color, thickness + border_thickness)
+            self.border_color, self.text_thickness + self.border_thickness, cv2.LINE_AA)
         
         # Draw text (white)
-        cv2.putText(frame, text, position, self.font, size.value, text_color, thickness)
+        cv2.putText(frame, text, position, self.font, size.value, 
+            self.text_color, self.text_thickness, cv2.LINE_AA)
+        
+        
+    def _draw_icon(self, frame, icon, position):
+        icon_img = self.icons[icon]
+        h, w = icon_img.shape[:2]
+        x, y = position
+        
+        # Center the incon in the y position
+        y -= h//2
+        
+        # Blend the icon with the frame using alpha channel (png's transparency is preserved)
+        alpha = icon_img[:, :, 3] / 255.0
+        for c in range(3):
+            frame[y:y+h, x:x+w, c] = alpha * icon_img[:, :, c] + (1 - alpha) * frame[y:y+h, x:x+w, c]
+
+    def _get_lens_facing(self):
+        return LENS_FACING(self.lens_facing_shared.value)
 
     def _rotate(self, img):
-        """Rotate image based on lens facing"""
-        if self.lens_facing == LENS_FACING.FRONT:
+        if self._get_lens_facing() == LENS_FACING.FRONT:
             return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         else:
             return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-    def _loop(self):
+    def _create_no_signal_frame(self):
+        frame = np.zeros((SCREEN_HEIGHT*2, SCALED_WIDTH*2, 3), dtype=np.uint8)
+        h, w = frame.shape[:2]
+        
+        text = "- NO SIGNAL -"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.HUGE)
+        text_x = (w - text_w) // 2
+        text_y = (h + text_h) // 2
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.HUGE)
+        
+        return frame
+
+    def _add_overlays(self, frame):
+        h, w = frame.shape[:2]
+        padding = 30
+        space = 10
+        icon_size = 64
+
+        # Camera source
+        lens_facing = self._get_lens_facing()
+        text = "FRONT CAMERA" if lens_facing == LENS_FACING.FRONT else "BACK CAMERA"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = (w - text_w) // 2
+        text_y = padding + text_h
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
+        
+        # Timestamp
+        text = datetime.now().strftime("%X")
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.NORMAL)
+        text_x = w - text_w - padding
+        text_y = h - padding
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.NORMAL)
+    
+        # Date
+        text = datetime.now().strftime("%-d %b %Y")
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.NORMAL)
+        text_x = padding
+        text_y = h - padding
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.NORMAL)
+
+        # Battery
+        battey_percent = self.metrics[METRIC.PHONE_BATTERY_PERCENT]
+        text = f"{battey_percent}%"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = w - text_w - padding
+        text_y = padding + text_h
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
+        if battey_percent >= 80:
+            icon = ICON.BATTERY_FULL
+        elif battey_percent >= 50:
+            icon = ICON.BATTERY_HIGH
+        elif battey_percent >= 20:
+            icon = ICON.BATTERY_LOW
+        else:
+            icon = ICON.BATTERY_EMPTY
+        self._draw_icon(frame, icon, (text_x - icon_size, text_y - text_h//2))
+
+        # Signal
+        text = "LTE"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = w - text_w - padding
+        text_y = padding + text_h + 70
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
+        signal_level = self.metrics[METRIC.SIGNAL_LEVEL]
+        if signal_level >= 4:
+            icon = ICON.SIGNAL_FULL
+        elif signal_level == 3:
+            icon = ICON.SIGNAL_HIGH
+        elif signal_level == 2:
+            icon = ICON.SIGNAL_LOW
+        else:
+            icon = ICON.SIGNAL_EMPTY
+        self._draw_icon(frame, icon, (text_x - icon_size - space, text_y - text_h//2))
+
+        # Voltage
+        text = f"{self.metrics[METRIC.CAR_BATTERY_VOLTAGE]/10.0:.1f}V"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = padding + icon_size + space
+        text_y = padding + text_h
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
+        self._draw_icon(frame, ICON.GAS, (padding, text_y - text_h//2))
+
+        # Heading
+        text = f"- {self.metrics[METRIC.HEADING]}' -"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.NORMAL)
+        text_x = (w - text_w) // 2
+        text_y = h - padding - 55
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.NORMAL)
+
+        text = self._heading_to_cardinal(self.metrics[METRIC.HEADING])
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = (w - text_w) // 2
+        text_y = h - padding
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
+
+    def _heading_to_cardinal(self, degrees):
+        directions = [
+            "NORTH", 
+            "NORTH EAST", 
+            "EAST", 
+            "SOUTH EAST", 
+            "SOUTH", 
+            "SOUTH WEST", 
+            "WEST", 
+            "NORTH WEST"
+        ]        
+        # Each sector is 45°, offset by 22.5° for correct rounding
+        index = int((degrees + 22.5) // 45) % 8
+        return directions[index]
+
+    def _telemetry_updater_thread(self):
+        while True:
+            (metric, value) = self.metrics_queue.get()
+            print(f"[STREAM] {metric.name}: {value}")
+            self.metrics[metric] = value
+
+    def _stream_reader_thread(self):
         try:
-            for frame in self.container.decode(video=0):
+            input_url = f"udp://0.0.0.0:{UDP_PORT}"
+            options = {
+                "fflags": "nobuffer",
+                "flags": "low_delay",
+                "framedrop": "1"
+            }
+            stream = av.open(input_url, format="h264", mode="r", options=options)
+            
+            for frame in stream.decode(video=0):
                 frame = frame.to_ndarray(format="bgr24")
                 frame = self._rotate(frame)
                 frame = cv2.resize(frame, (SCALED_WIDTH*2, SCREEN_HEIGHT*2))
-                h, w = frame.shape[:2]
-
-                # Camera source
-                text = "FRONT CAMERA" if self.lens_facing == LENS_FACING.FRONT else "BACK CAMERA"
-                text_size = self._get_text_size(text, FONT_SIZE.BIG)
-                text_x = (w - text_size) // 2
-                text_y = h - 20
-                self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
                 
-                # Timestamp
-                text = datetime.now().strftime("%X")
-                text_size = self._get_text_size(text, FONT_SIZE.NORMAL)
-                text_x = w - text_size - 20
-                text_y = h - 30
-                self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.NORMAL)
-            
-                # Date
-                text = datetime.now().strftime("%-d %b %Y")
-                text_size = self._get_text_size(text, FONT_SIZE.NORMAL)
-                text_x = 20
-                text_y = h - 30
-                self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.NORMAL)
-
-                cv2.imshow(self.window_name, frame)
-                if cv2.waitKey(1) == 27:  # ESC to quit
-                    break
+                try:
+                    self.frame_queue.put_nowait(frame)
+                    self.last_frame_time = time.time()
+                except queue.Full:
+                    pass  # Queue full, skip frame
                     
         except Exception as e:
-            perror(f"Error during playback: {e}")
+            perror(f"Stream reader error: {e}")
         finally:
-            self.container.close()
-            cv2.destroyAllWindows()
-            print(f"OK REMOVE THIS")
+            if stream:
+                stream.close()
+
+    def _update_display(self):
+        frame = None
+        try:
+            frame = self.frame_queue.get_nowait()
+        except queue.Empty:
+            pass
+        else:
+            self._add_overlays(frame)
+
+        timed_out = time.time() - self.last_frame_time > self.no_signal_threshold_s
+        if frame is None and timed_out:
+            frame = self._create_no_signal_frame()
+
+        if frame is not None:
+            # convert BGR -> RGB for Qt
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb.shape
+            bytes_per_line = ch * w
+            qimg = QtGui.QImage(rgb.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
+            pix = QtGui.QPixmap.fromImage(qimg)
+
+            # scale to label/window if needed preserving aspect
+            pix = pix.scaled(self.label.width(), self.label.height(), QtCore.Qt.KeepAspectRatio)
+            self.label.setPixmap(pix)
 
     def _start(self):
-        self.window_name = "VIDEO STREAM"
-        cv2.namedWindow(self.window_name, cv2.WINDOW_OPENGL)
-        cv2.resizeWindow(self.window_name, SCALED_WIDTH, SCREEN_HEIGHT)
-        
-        # Position window
-        left = (SCREEN_WIDTH - SCALED_WIDTH) // 2
-        cv2.moveWindow(self.window_name, left, 0)
-        cv2.setWindowProperty(self.window_name, cv2.WND_PROP_TOPMOST, 1)
-        
-        input_url = f"udp://0.0.0.0:{UDP_PORT}"
-        options = {
-            "fflags": "nobuffer",
-            "flags": "low_delay",
-            "framedrop": "1"
-        }
-        self.container = av.open(input_url, format="h264", mode="r", options=options)
+        self.app = QtWidgets.QApplication(sys.argv)
 
-        self._loop()
+        self.window = QtWidgets.QWidget()
+        self.window.setWindowTitle("VIDEO STREAM")
+        self.window.setWindowFlags(
+            QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
+
+        # Create QLabel to hold frames
+        self.label = QtWidgets.QLabel()
+        # make sure label expands to full window
+        self.label.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.label.setAlignment(QtCore.Qt.AlignCenter)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.label)
+        self.window.setLayout(layout)
+
+        # Position and size the window (match behavior of your cv2 move/resize)
+        window_w = SCALED_WIDTH
+        window_h = SCREEN_HEIGHT
+        left = (SCREEN_WIDTH - SCALED_WIDTH) // 2
+        top = 0
+        # set geometry (x, y, width, height)
+        self.window.setGeometry(left, top, window_w, window_h)
+
+        # Initially show NO SIGNAL
+        no_signal_frame = self._create_no_signal_frame()
+        rgb = cv2.cvtColor(no_signal_frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        qimg = QtGui.QImage(rgb.data, w, h, ch * w, QtGui.QImage.Format_RGB888)
+        pix = QtGui.QPixmap.fromImage(qimg)
+        pix = pix.scaled(window_w, window_h, QtCore.Qt.KeepAspectRatio)
+        self.label.setPixmap(pix)
+
+        self.window.show()
+
+        self.frame_queue = queue.Queue(maxsize=1)
+
+        threading.Thread(target=self._stream_reader_thread, daemon=True).start()
+        threading.Thread(target=self._telemetry_updater_thread, daemon=True).start()
+
+        timer = QtCore.QTimer()
+        timer.timeout.connect(self._update_display)
+        timer.start(FRAMETIME_MS)
+
+        # Run the Qt event loop (blocks until window closed)
+        try:
+            self.app.exec_()
+        except Exception as e:
+            perror(f"Qt exec error: {e}")
+        finally:
+            # cleanup
+            try:
+                self.app.quit()
+            except Exception:
+                pass
 
     def play(self):
+        if self.process and self.process.is_alive():
+            print("Stream already started")
+            return
+
         self.process = multiprocessing.Process(target=self._start)
         self.process.start()
-        print(f"Stream starting...")
+        print("Stream started")
 
     def switch(self):
-        self.lens_facing = LENS_FACING.FRONT if self.lens_facing == LENS_FACING.BACK else LENS_FACING.BACK
+        # FIXME: thrash
+        current_value = self.lens_facing_shared.value
+        new_value = LENS_FACING.BACK.value if current_value == LENS_FACING.FRONT.value else LENS_FACING.FRONT.value
+        self.lens_facing_shared.value = new_value
+        print(f"Switched to {'FRONT' if new_value == LENS_FACING.FRONT.value else 'BACK'} camera")
 
     def close(self):
         if self.process:
             self.process.terminate()
-        print(f"Stream terminated")
+            self.process = None
+        print("Stream terminated (PyQt)")

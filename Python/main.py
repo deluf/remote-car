@@ -4,10 +4,9 @@ os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
 
 import multiprocessing
 import pygame
-import threading
 from enum import Enum, IntEnum
 
-from server import METRIC, Server
+from server import METRIC, STREAM_METRICS, Server
 from map_builder import Map_Builder
 from stream_manager import Stream_Manager
 
@@ -62,8 +61,10 @@ last_sent_states = {
 def telemetry_callback(metric, value):
     if metric == METRIC.POSITION:
         map_builder.add_waypoint(value[0], value[1], value[2])
-    
-    print(f"{metric.name}: {value}")
+    elif metric in STREAM_METRICS:
+        metrics_queue.put_nowait((metric, value))
+    else:
+        print(f"[UNHANDLED] {metric.name}: {value}")
 
 def calculate_march_speed(level):
     if level < -1 + TRIGGER_DEADZONE:
