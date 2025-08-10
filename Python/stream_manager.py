@@ -62,9 +62,8 @@ class Stream_Manager:
         self.process = None
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.text_thickness = 2
-        self.text_color = (255, 255, 255)
         self.border_thickness = 7
-        self.border_color = (0, 0, 0)
+        self.num_cells_in_series = 2
 
         # cv2.IMREAD_UNCHANGED ensures alpha channel is loaded properly
         self.icons = { icon: cv2.imread(f"icons/{icon.name.lower()}.png", cv2.IMREAD_UNCHANGED) for icon in ICON}
@@ -81,14 +80,15 @@ class Stream_Manager:
     def _get_text_size(self, text, scale=FONT_SIZE.NORMAL):
         return cv2.getTextSize(text, self.font, scale.value, self.text_thickness)[0]
 
-    def _draw_text(self, frame, text, position, size=FONT_SIZE.NORMAL):
+    def _draw_text(self, frame, text, position, size=FONT_SIZE.NORMAL, color=(255,255,255)):
         # Draw border (black)
+        border_color = (0, 0, 0)
         cv2.putText(frame, text, position, self.font, size.value, 
-            self.border_color, self.text_thickness + self.border_thickness, cv2.LINE_AA)
+            border_color, self.text_thickness + self.border_thickness, cv2.LINE_AA)
         
         # Draw text (white)
         cv2.putText(frame, text, position, self.font, size.value, 
-            self.text_color, self.text_thickness, cv2.LINE_AA)
+            color, self.text_thickness, cv2.LINE_AA)
         
         
     def _draw_icon(self, frame, icon, position):
@@ -123,7 +123,18 @@ class Stream_Manager:
         text_y = (h + text_h) // 2
         self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.HUGE)
         
+        self._add_overlays(frame) # FIXME:
         return frame
+
+    def _rc_voltage_to_percentage(self, voltage):
+        single_cell_voltage = voltage / self.num_cells_in_series
+        single_cell_full = 4.2
+        single_cell_empty = 3.2
+        if single_cell_voltage >= single_cell_full:
+            return 100
+        if single_cell_voltage <= single_cell_empty:
+            return 0
+        return round((single_cell_voltage - single_cell_empty) * 100)
 
     def _add_overlays(self, frame):
         h, w = frame.shape[:2]
@@ -155,28 +166,31 @@ class Stream_Manager:
 
         # Battery
         battey_percent = self.metrics[METRIC.PHONE_BATTERY_PERCENT]
+        battey_percent = (int(time.time()) % 20)*5 #FIXME:
+        
+        if battey_percent >= 80:
+            icon = ICON.BATTERY_FULL
+            color = (255, 255, 255)
+        elif battey_percent >= 50:
+            icon = ICON.BATTERY_HIGH
+            color = (255, 255, 255)
+        elif battey_percent >= 25:
+            icon = ICON.BATTERY_LOW
+            color = (0, 140, 255)
+        else:
+            icon = ICON.BATTERY_EMPTY
+            color = (0, 0, 180)
+        
         text = f"{battey_percent}%"
         (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
         text_x = w - text_w - padding
         text_y = padding + text_h
-        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
-        if battey_percent >= 80:
-            icon = ICON.BATTERY_FULL
-        elif battey_percent >= 50:
-            icon = ICON.BATTERY_HIGH
-        elif battey_percent >= 20:
-            icon = ICON.BATTERY_LOW
-        else:
-            icon = ICON.BATTERY_EMPTY
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG, color)
         self._draw_icon(frame, icon, (text_x - icon_size, text_y - text_h//2))
 
         # Signal
-        text = "LTE"
-        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
-        text_x = w - text_w - padding
-        text_y = padding + text_h + 70
-        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
         signal_level = self.metrics[METRIC.SIGNAL_LEVEL]
+
         if signal_level >= 4:
             icon = ICON.SIGNAL_FULL
         elif signal_level == 3:
@@ -185,15 +199,44 @@ class Stream_Manager:
             icon = ICON.SIGNAL_LOW
         else:
             icon = ICON.SIGNAL_EMPTY
+        
+        text = "LTE"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = w - text_w - padding
+        text_y = padding + text_h + 70
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
         self._draw_icon(frame, icon, (text_x - icon_size - space, text_y - text_h//2))
 
         # Voltage
-        text = f"{self.metrics[METRIC.CAR_BATTERY_VOLTAGE]/10.0:.1f}V"
+        voltage = self.metrics[METRIC.CAR_BATTERY_VOLTAGE]/10.0    
+        percentage = self._rc_voltage_to_percentage(voltage)
+
+        if percentage >= 50:
+            color = (255, 255, 255)
+        elif percentage >= 25:
+            color = (0, 140, 255)
+        else:
+            color = (0, 0, 180)
+            # Blinking battery low text
+            if (int(time.time()) % 2 == 0):
+                text = "- CAR BATTERY LOW -"
+                (text_w, text_h)= self._get_text_size(text, FONT_SIZE.HUGE)
+                text_x = (w - text_w) // 2
+                text_y = (h + text_h) // 2
+                self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.HUGE, color)
+
+        text = f"{voltage:.1f}V"
         (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
         text_x = padding + icon_size + space
         text_y = padding + text_h
         self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
         self._draw_icon(frame, ICON.GAS, (padding, text_y - text_h//2))
+    
+        text = f"~{percentage}%"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = padding + space
+        text_y = padding + text_h + 70
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG, color)
 
         # Heading
         text = f"- {self.metrics[METRIC.HEADING]}' -"

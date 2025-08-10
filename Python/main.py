@@ -170,7 +170,7 @@ def ui_loop():
                 if direction is not None and intensity is not None and should_send(direction, intensity):
                     command = direction + intensity
                     server.send_command(command.to_bytes(1))
-                    print(f"Sent {direction.name} {intensity}/{COMMAND_INTENSITY_MAX - 1} - {command}")
+                    #print(f"Sent {direction.name} {intensity}/{COMMAND_INTENSITY_MAX - 1} - {command}")
 
             elif event.type == pygame.JOYDEVICEADDED:
                 joystick = pygame.joystick.Joystick(event.device_index)
