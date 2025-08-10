@@ -12,6 +12,7 @@ from map_builder import Map_Builder
 from stream_manager import Stream_Manager
 from printer import perror
 from gamepad_viewer import Gamepad_Viewer
+from network_manager import Network_Manager
 
 class DS4_DIGITAL(Enum):
     X = 0
@@ -203,7 +204,7 @@ if __name__ == "__main__":
     applescript = '''
     tell application "iTerm2"
         tell current window
-            set bounds to {1058, 300, 1440, 900} -- {left, top, right, bottom}
+            set bounds to {1058, 600, 1440, 900} -- {left, top, right, bottom}
         end tell
     end tell
     '''
@@ -221,6 +222,9 @@ if __name__ == "__main__":
     map_builder = Map_Builder()
     map_builder.open_live_map()
 
+    #network_manager = Network_Manager()
+    #network_manager.open_live_view()
+
     server = Server(telemetry_callback)
     server.start()
 
@@ -235,6 +239,7 @@ if __name__ == "__main__":
 
     gamepad_viewer.close_live_view()
     map_builder.close_live_map()
+    #network_manager.close_live_view()
     video_stream.close()
     pygame.quit()
 

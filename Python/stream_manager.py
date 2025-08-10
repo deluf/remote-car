@@ -166,8 +166,6 @@ class Stream_Manager:
 
         # Battery
         battey_percent = self.metrics[METRIC.PHONE_BATTERY_PERCENT]
-        battey_percent = (int(time.time()) % 20)*5 #FIXME:
-        
         if battey_percent >= 80:
             icon = ICON.BATTERY_FULL
             color = (255, 255, 255)
@@ -382,6 +380,13 @@ class Stream_Manager:
             except Exception:
                 pass
 
+    def switch(self):
+        # FIXME: thrash
+        current_value = self.lens_facing_shared.value
+        new_value = LENS_FACING.BACK.value if current_value == LENS_FACING.FRONT.value else LENS_FACING.FRONT.value
+        self.lens_facing_shared.value = new_value
+        print(f"Switched to {'FRONT' if new_value == LENS_FACING.FRONT.value else 'BACK'} camera")
+
     def play(self):
         if self.process and self.process.is_alive():
             print("Stream already started")
@@ -390,13 +395,6 @@ class Stream_Manager:
         self.process = multiprocessing.Process(target=self._start)
         self.process.start()
         print("Stream started")
-
-    def switch(self):
-        # FIXME: thrash
-        current_value = self.lens_facing_shared.value
-        new_value = LENS_FACING.BACK.value if current_value == LENS_FACING.FRONT.value else LENS_FACING.FRONT.value
-        self.lens_facing_shared.value = new_value
-        print(f"Switched to {'FRONT' if new_value == LENS_FACING.FRONT.value else 'BACK'} camera")
 
     def close(self):
         if self.process:
