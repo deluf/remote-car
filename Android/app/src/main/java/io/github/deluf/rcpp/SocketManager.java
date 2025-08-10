@@ -24,10 +24,13 @@ public class SocketManager {
     private static final int RECONNECT_DELAY_MS = 3000;
     private static final int SOCKET_READ_TIMEOUT_MS = 1000;
 
+    private static final int FORWARD_CMD_TO_SERIAL_THRESHOLD = 199;
     public enum Command {
-        MARCH,
-        STEER,
-        SWITCH_CAMERA
+        SWITCH_CAMERA(200);
+
+        final int value;
+        Command(int i) { this.value = i; }
+        public int getValue() { return value; }
     }
 
     private final MainActivity mainActivity;
@@ -117,10 +120,9 @@ public class SocketManager {
         executorService.execute(() -> {
             isControlListening.set(true);
 
-            int maxCommandLen = 3;
-            byte[] readBuffer = new byte[maxCommandLen]; // Only allocate it once for all the commands
+            byte[] commandBytes = new byte[1]; // Only allocate it once for all the commands
             while (isControlListening.get()) {
-                try { recvCommand(inputStream, readBuffer); }
+                try { recvCommand(inputStream, commandBytes); }
                 catch (SocketTimeoutException ignored) { }
                 catch (IOException e) {
                     mainActivity.logMessage(LogType.ERROR, "Control socket error: " + e.getMessage());
@@ -132,28 +134,21 @@ public class SocketManager {
         });
     }
 
-    private void recvCommand(InputStream inputStream, byte[] readBuffer) throws IOException {
-        int ret;
-        ret = inputStream.read(readBuffer, 0, 1);
-        if (ret <= 0) { throw new IOException("Connection closed"); }
+    private void recvCommand(InputStream inputStream, byte[] commandBytes) throws IOException {
+        int command = inputStream.read();
+        if (command < 0) { throw new IOException("Connection closed"); }
 
-        if (readBuffer[0] >= Command.values().length) {
-            throw new IllegalArgumentException("Invalid command");
+        if (command <= FORWARD_CMD_TO_SERIAL_THRESHOLD) {
+            commandBytes[0] = (byte) command;
+            mainActivity.microcontrollerManager.sendBytes(commandBytes);
+            return;
         }
-        Command command = Command.values()[readBuffer[0]];
 
-        if (command == Command.MARCH || command == Command.STEER) {
-            // Read two more bytes: direction and speed
-            int bytesRead = 1;
-            while (bytesRead < 3) {
-                ret = inputStream.read(readBuffer, bytesRead, 3 - bytesRead);
-                if (ret <= 0) { throw new IOException("Connection closed"); }
-                bytesRead += ret;
-            }
-            mainActivity.microcontrollerManager.sendBytes(readBuffer);
-        }
-        else if (command == Command.SWITCH_CAMERA) {
+        if (command == Command.SWITCH_CAMERA.getValue()) {
             mainActivity.switchCamera();
+        }
+        else {
+            mainActivity.logMessage(LogType.ERROR, "Unknown command: " + command);
         }
     }
 

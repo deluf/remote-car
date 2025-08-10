@@ -168,8 +168,6 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
 
         int timeout_ms = 100;
         try {
-            mainActivity.logMessage(MainActivity.LogType.INFO,
-                    "{" + (bytes[0] & 0xFF) + ", " + (bytes[1] & 0xFF) + ", " + (bytes[2] & 0xFF) + "}");
             serialPort.write(bytes, timeout_ms);
         } catch (IOException e) {
             mainActivity.logMessage(LogType.ERROR, "Unable to write to serial: " + e.getMessage());

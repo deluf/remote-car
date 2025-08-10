@@ -39,16 +39,13 @@ class DS4_ANALOG(Enum):
     L2 = 4      # -1 Out  -> In 1
     R2 = 5      # -1 Out  -> In 1
 
-class COMMAND(IntEnum): 
-    MARCH = 0
-    STEER = 1
-    SWITCH_CAMERA = 2
-
-class DIRECTION(IntEnum):
-	FORWARD = 0
-	BACKWARDS = 1
-	RIGHT = 2
-	LEFT = 3
+class COMMAND(IntEnum):
+    FORWARD = 0
+    BACKWARD = 50
+    RIGHT = 100
+    LEFT = 150
+    SWITCH_CAMERA = 200
+COMMAND_INTENSITY_MAX = 50
 
 FPS = 30
 STICK_DEADZONE = 0.05
@@ -59,14 +56,14 @@ red_limit = {
     METRIC.CAMERA_TEMP: 60,
     METRIC.CPU_TEMP: 70,
     METRIC.GPU_TEMP: 70,
-    METRIC.BATTERY_TEMP: 50,
+    METRIC.BATTERY_TEMP: 45,
 }
 orange_limit = {
     METRIC.MODEM_TEMP: 45,
     METRIC.CAMERA_TEMP: 45,
     METRIC.CPU_TEMP: 55,
     METRIC.GPU_TEMP: 55,
-    METRIC.BATTERY_TEMP: 40,
+    METRIC.BATTERY_TEMP: 37.5,
 }
 last_temps = {temp_metric: 0 for temp_metric in TEMP_METRICS}
 max_temps = {temp_metric: 0 for temp_metric in TEMP_METRICS}
@@ -98,33 +95,33 @@ def telemetry_callback(metric, value):
     else:
         perror(f"Unhandled metric {metric.name}: {value}")
 
-def calculate_march_speed(level):
+def calculate_march_intensity(level):
     if level < -1 + TRIGGER_DEADZONE:
         return 0
     if level > 1 - TRIGGER_DEADZONE:
-        return 255
-    return int(((level + 1)/2) * 127 + 128)
+        return COMMAND_INTENSITY_MAX - 1
+    
+    # -1 <-> 1 remapped to 0 <-> 49
+    level_percent = (level + 1)/2 
+    return round(level_percent * (COMMAND_INTENSITY_MAX - 1))
 
-def calculate_steer_speed(level):
+def calculate_steer_intensity(level):
     if abs(level) < STICK_DEADZONE:
         return 0
     if abs(level) > 1 - STICK_DEADZONE:
-        return 255
-    return int((abs(level)) * 127 + 128)
+        return COMMAND_INTENSITY_MAX - 1
+    
+    # -1 <-> 0 and 0 <-> 1 both remapped to 0 <-> 49
+    level_percent = abs(level)
+    return round(level_percent * (COMMAND_INTENSITY_MAX - 1))
 
 # State tracking for bandwidth optimization
-last_sent_states = {
-    DS4_ANALOG.L2: None,
-    DS4_ANALOG.R2: None,
-    DS4_ANALOG.L_X: None
-}
-def should_send_command(analog_control, command, direction, speed):
-    current_state = (command, direction, speed)
-    if last_sent_states[analog_control] == current_state:
+last_sent_states = { direction: 0 for direction in COMMAND }
+def should_send(direction, intensity):
+    if last_sent_states[direction] == intensity:
         return False
-    last_sent_states[analog_control] = current_state
+    last_sent_states[direction] = intensity
     return True
-
 
 def ui_loop():
     screen = pygame.display.set_mode((382, 240), pygame.NOFRAME)
@@ -158,29 +155,22 @@ def ui_loop():
                 level = event.value
                 analog_control = DS4_ANALOG(event.axis)
 
-                command = None
                 direction = None
-                speed = 0
-
+                intensity = None
                 if analog_control == DS4_ANALOG.R2:
-                    command = COMMAND.MARCH
-                    direction = DIRECTION.FORWARD
-                    speed = calculate_march_speed(level)
-                
+                    direction = COMMAND.FORWARD
+                    intensity = calculate_march_intensity(level)
                 elif analog_control == DS4_ANALOG.L2:
-                    command = COMMAND.MARCH
-                    direction = DIRECTION.BACKWARDS
-                    speed = calculate_march_speed(level)
-
+                    direction = COMMAND.BACKWARD 
+                    intensity = calculate_march_intensity(level)
                 elif analog_control == DS4_ANALOG.L_X:
-                    command = COMMAND.STEER
-                    direction = DIRECTION.LEFT if level < 0 else DIRECTION.RIGHT
-                    speed = calculate_steer_speed(level)
+                    direction = COMMAND.LEFT if level < 0 else COMMAND.RIGHT
+                    intensity = calculate_steer_intensity(level)
 
-                if command is not None and should_send_command(analog_control, command, direction, speed):
-                    packet = bytes([command, direction, speed])
-                    server.send_command(packet)
-                    #print(f"[DEBUG] Sent: cmd={command.name}, dir={direction.name}, speed={speed:.2f} (level={level:.2f})")
+                if direction is not None and intensity is not None and should_send(direction, intensity):
+                    command = direction + intensity
+                    server.send_command(command.to_bytes(1))
+                    print(f"Sent {direction.name} {intensity}/{COMMAND_INTENSITY_MAX - 1} - {command}")
 
             elif event.type == pygame.JOYDEVICEADDED:
                 joystick = pygame.joystick.Joystick(event.device_index)
@@ -238,7 +228,10 @@ if __name__ == "__main__":
     video_stream = Stream_Manager(metrics_queue)
     video_stream.play()
 
-    ui_loop() # Blocking
+    try:
+        ui_loop() # Blocking
+    except KeyboardInterrupt:
+        pass
 
     gamepad_viewer.close_live_view()
     map_builder.close_live_map()

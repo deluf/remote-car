@@ -19,21 +19,24 @@ const float RESISTOR_RATIO = (R1 + R2) / R2;
 const float ADC_VREF = 5.0;	// Volt
 const float ADC_STEPS = (1 << ADC_RESOLUTION) - 1;
 
-enum COMMAND 
-{
-	MARCH,
-	STEER
-};
+// Given the current battery configuration, the smallest possible
+//  PWM signal duty cycle [0-255] that makes the motors move
+#define PWM_MIN 128
+#define PWM_MAX 255
 
-enum DIRECTION 
-{
-	FORWARD,
-	BACKWARDS,
-	RIGHT,
-	LEFT
-};
+/**
+ * Commands are encoded in a single byte:
+ * - not used -		[200+]
+ * STEER LEFT 		[150-199]
+ * STEER RIGHT 		[100-149]
+ * MARCH BACKWARD 	[050-099]
+ * MARCH FORWARD 	[000-049]
+ */
+#define FORWARD_BACKWARD_SPLIT_POINT 50
+#define RIGHT_LEFT_SPLIT_POINT 150
+// Maximum intensity of each movement
+#define INTENSITY_MAX 50 
 
-uint8_t recv_buffer[3];
 unsigned long time_since_reading;
 
 float read_car_battery_voltage()
@@ -63,7 +66,7 @@ void setup()
 	digitalWrite(MARCH_FORWARD_PIN, LOW);
 }
 
-void loop() 
+void loop()
 {
 	unsigned long current_time = millis();
 	if (current_time - time_since_reading > CAR_BATTERY_VOLTAGE_UPDATE_INTERVAL_MS)
@@ -79,24 +82,24 @@ void loop()
 	}
 
 	int available_bytes = Serial.available();
-	if (available_bytes < 3) { return; }
-	Serial.readBytes(recv_buffer, 3);
+	if (available_bytes < 1) { return; }
+	uint8_t cmd_byte = Serial.read();
 
-	// <command> <direction> <speed>
-	COMMAND command = (COMMAND)recv_buffer[0];
-	DIRECTION direction = (DIRECTION)recv_buffer[1];
-	uint8_t speed = recv_buffer[2];
+	// 0 <-> (INTENSITY_MAX - 1) remapped to PWM_MIN <-> PWM_MAX
+	uint8_t intensity = (cmd_byte % INTENSITY_MAX);
+	float intensity_percent = (float)intensity / (INTENSITY_MAX - 1);
 
-	if (command == MARCH) 
-	{
-		analogWrite(MARCH_PWM_PIN, speed);
-		digitalWrite(MARCH_FORWARD_PIN, direction == FORWARD);
-		digitalWrite(MARCH_BACKWARDS_PIN, direction == BACKWARDS);
+	uint8_t	pwm_speed = (intensity == 0) ? 0 : round(intensity_percent * (PWM_MAX - PWM_MIN)) + PWM_MIN;
+	if (cmd_byte < 100) {
+		// 0 <= cmd_byte < 100
+		analogWrite(MARCH_PWM_PIN, pwm_speed);
+		digitalWrite(MARCH_FORWARD_PIN, cmd_byte < FORWARD_BACKWARD_SPLIT_POINT);
+		digitalWrite(MARCH_BACKWARDS_PIN, cmd_byte >= FORWARD_BACKWARD_SPLIT_POINT);
 	}
-	else if (command == STEER) 
-	{
-		analogWrite(STEER_PWM_PIN, speed);
-		digitalWrite(STEER_RIGHT_PIN, direction == RIGHT);
-		digitalWrite(STEER_LEFT_PIN, direction == LEFT);
+	else if (cmd_byte < 200) {
+		// 100 <= cmd_byte < 200
+		analogWrite(STEER_PWM_PIN, pwm_speed);
+		digitalWrite(STEER_RIGHT_PIN, cmd_byte < RIGHT_LEFT_SPLIT_POINT);
+		digitalWrite(STEER_LEFT_PIN, cmd_byte >= RIGHT_LEFT_SPLIT_POINT);
 	}
 }
