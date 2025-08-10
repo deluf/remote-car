@@ -117,6 +117,7 @@ public class TelemetryManager implements SensorEventListener {
         startCellularMonitoring();
         startLocationMonitoring();
         startTemperatureMonitoring();
+        startRCbatteryMonitoring();
     }
 
     @Override
@@ -288,7 +289,13 @@ public class TelemetryManager implements SensorEventListener {
         }
     }
 
+    private boolean collectBatteryVoltage = false;
+    private void startRCbatteryMonitoring() {
+        mainActivity.logMessage(MainActivity.LogType.INFO, "RC battery monitoring enabled");
+        collectBatteryVoltage = true;
+    }
     public void onNewCarBatteryVoltage(byte voltage) {
+        if (!collectBatteryVoltage) { return; }
         updateMetricIfChanged(Metric.CAR_BATTERY_VOLTAGE, (int)voltage);
     }
 
