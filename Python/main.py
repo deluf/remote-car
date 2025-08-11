@@ -80,7 +80,7 @@ def draw_temp(surface, temp_metric, position):
     elif last_temps[temp_metric] >= orange_limit[temp_metric]:
         color = (255, 140, 0)
     else:
-        color = (0, 200, 0)
+        color = (0, 0, 0)
     text_surface = PYGAME_FONT.render(text, True, color)
     surface.blit(text_surface, position)
 
@@ -125,7 +125,7 @@ def should_send(direction, intensity):
     return True
 
 def ui_loop():
-    screen = pygame.display.set_mode((382, 240), pygame.NOFRAME)
+    screen = pygame.display.set_mode((382, 320), pygame.NOFRAME)
     pygame.display.set_caption("RC++")
     clock = pygame.time.Clock()
 
@@ -199,16 +199,16 @@ def ui_loop():
         
 if __name__ == "__main__":
 
-    import subprocess
-
-    applescript = '''
-    tell application "iTerm2"
-        tell current window
-            set bounds to {1058, 600, 1440, 900} -- {left, top, right, bottom}
+    if False:
+        import subprocess
+        applescript = '''
+        tell application "iTerm2"
+            tell current window
+                set bounds to {1058, 600, 1440, 900} -- {left, top, right, bottom}
+            end tell
         end tell
-    end tell
-    '''
-    subprocess.run(["osascript", "-e", applescript])
+        '''
+        subprocess.run(["osascript", "-e", applescript])
 
     pygame.init()
 
@@ -222,8 +222,8 @@ if __name__ == "__main__":
     map_builder = Map_Builder()
     map_builder.open_live_map()
 
-    #network_manager = Network_Manager()
-    #network_manager.open_live_view()
+    network_manager = Network_Manager()
+    network_manager.open_live_view()
 
     server = Server(telemetry_callback)
     server.start()
@@ -239,17 +239,18 @@ if __name__ == "__main__":
 
     gamepad_viewer.close_live_view()
     map_builder.close_live_map()
-    #network_manager.close_live_view()
+    network_manager.close_live_view()
     video_stream.close()
     pygame.quit()
 
-    applescript = '''
-    tell application "iTerm2"
-        tell current window
-            set bounds to {0, 0, 1440, 900} -- {left, top, right, bottom}
+    if False:
+        applescript = '''
+        tell application "iTerm2"
+            tell current window
+                set bounds to {0, 0, 1440, 900} -- {left, top, right, bottom}
+            end tell
         end tell
-    end tell
-    '''
-    subprocess.run(["osascript", "-e", applescript])
+        '''
+        subprocess.run(["osascript", "-e", applescript])
 
     print("Done")

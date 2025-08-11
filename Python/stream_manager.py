@@ -123,7 +123,6 @@ class Stream_Manager:
         text_y = (h + text_h) // 2
         self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.HUGE)
         
-        self._add_overlays(frame) # FIXME:
         return frame
 
     def _rc_voltage_to_percentage(self, voltage):
