@@ -46,12 +46,15 @@ class COMMAND(IntEnum):
     RIGHT = 100
     LEFT = 150
     SWITCH_CAMERA = 200
+    TOGGLE_CLACSON = 201
+    TOGGLE_NEON = 202
 COMMAND_INTENSITY_MAX = 50
 
 FPS = 30
 STICK_DEADZONE = 0.05
 TRIGGER_DEADZONE = 0.01
 
+#FIXME: color anche le max, magari aggiungi host temp
 red_limit = {
     METRIC.MODEM_TEMP: 60,
     METRIC.CAMERA_TEMP: 60,
@@ -148,9 +151,17 @@ def ui_loop():
                     print(f"Button {DS4_DIGITAL(event.button).name} pressed")
                     server.send_command(COMMAND.SWITCH_CAMERA.to_bytes(1))
                     video_stream.switch()
+                elif button == DS4_DIGITAL.SQUARE:
+                    print(f"Button {DS4_DIGITAL(event.button).name} pressed")
+                    server.send_command(COMMAND.TOGGLE_NEON.to_bytes(1))
+                elif button == DS4_DIGITAL.X:
+                    print(f"Button {DS4_DIGITAL(event.button).name} pressed")
+                    server.send_command(COMMAND.TOGGLE_CLACSON.to_bytes(1))
 
-            #elif event.type == pygame.JOYBUTTONUP:
-                #print(f"Button {DS4_DIGITAL(event.button).name} released")
+            elif event.type == pygame.JOYBUTTONUP:
+                if button == DS4_DIGITAL.X:
+                    print(f"Button {DS4_DIGITAL(event.button).name} released")
+                    server.send_command(COMMAND.TOGGLE_CLACSON.to_bytes(1))
 
             elif event.type == pygame.JOYAXISMOTION:
                 level = event.value

@@ -71,7 +71,8 @@ public class TelemetryManager implements SensorEventListener {
                                             // ACCURACY  | int
         HEADING(102),               // degrees   | int
         SIGNAL_LEVEL(103),          // [0-5]     | int
-        CAR_BATTERY_VOLTAGE(104);   // centiVolt | int
+        CAR_BATTERY_VOLTAGE(104),   // centiVolt | int
+        ELECTRONICS_BATTERY_VOLTAGE(105);   // centiVolt | int
 
         private final int sensorId;
 
@@ -117,7 +118,7 @@ public class TelemetryManager implements SensorEventListener {
         startCellularMonitoring();
         startLocationMonitoring();
         startTemperatureMonitoring();
-        startRCbatteryMonitoring();
+        startVoltageMonitoring();
     }
 
     @Override
@@ -289,14 +290,19 @@ public class TelemetryManager implements SensorEventListener {
         }
     }
 
-    private boolean collectBatteryVoltage = false;
-    private void startRCbatteryMonitoring() {
-        mainActivity.logMessage(MainActivity.LogType.INFO, "RC battery monitoring enabled");
-        collectBatteryVoltage = true;
+    // FIXME: magari dovrei mettere le variabili usate solo nell funzioni anche altrove (invece che in cima a prescindere)
+    private boolean collectVoltages = false;
+    private void startVoltageMonitoring() {
+        mainActivity.logMessage(MainActivity.LogType.INFO, "Voltage monitoring enabled");
+        collectVoltages = true;
     }
     public void onNewCarBatteryVoltage(byte voltage) {
-        if (!collectBatteryVoltage) { return; }
+        if (!collectVoltages) { return; }
         updateMetricIfChanged(Metric.CAR_BATTERY_VOLTAGE, (int)voltage);
+    }
+    public void onNewElectronicsBatteryVoltage(byte voltage) {
+        if (!collectVoltages) { return; }
+        updateMetricIfChanged(Metric.ELECTRONICS_BATTERY_VOLTAGE, (int)voltage);
     }
 
     public void stopCollecting() {

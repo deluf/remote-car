@@ -7,22 +7,35 @@ from enum import IntEnum
 from printer import perror
 
 class METRIC(IntEnum):
-    MODEM_TEMP = 3              # celsius   | int
-    CAMERA_TEMP = 5             # celsius   | int
-    CPU_TEMP = 6                # celsius   | int  (Average temp of the high performance core cluster)
-    GPU_TEMP = 12               # celsius   | int
-    BATTERY_TEMP = 42           # celsius   | int
-    PHONE_BATTERY_PERCENT = 100 # [0-100]   | int
-    POSITION = 101              # LATITUDE  | float,
-                                # LONGITUDE | float,
-                                # ACCURACY  | int
-    HEADING = 102               # degrees   | int
-    SIGNAL_LEVEL = 103          # [0-5]     | int
-    CAR_BATTERY_VOLTAGE = 104   # centiVolt | int
+    MODEM_TEMP = 3                      # celsius   | int
+    CAMERA_TEMP = 5                     # celsius   | int
+    CPU_TEMP = 6                        # celsius   | int  (Average temp of the high performance core cluster)
+    GPU_TEMP = 12                       # celsius   | int
+    BATTERY_TEMP = 42                   # celsius   | int
+    PHONE_BATTERY_PERCENT = 100         # [0-100]   | int
+    POSITION = 101                      # LATITUDE  | float,
+                                        # LONGITUDE | float,
+                                        # ACCURACY  | int
+    HEADING = 102                       # degrees   | int
+    SIGNAL_LEVEL = 103                  # [0-5]     | int
+    CAR_BATTERY_VOLTAGE = 104           # centiVolt | int
+    ELECTRONICS_BATTERY_VOLTAGE = 105   # centiVolt | int
 
 # Metrics that are displayed on the video stream
-STREAM_METRICS = [METRIC.PHONE_BATTERY_PERCENT, METRIC.HEADING, METRIC.SIGNAL_LEVEL, METRIC.CAR_BATTERY_VOLTAGE]
-TEMP_METRICS = [METRIC.MODEM_TEMP, METRIC.CAMERA_TEMP, METRIC.CPU_TEMP, METRIC.GPU_TEMP, METRIC.BATTERY_TEMP]
+STREAM_METRICS = [
+    METRIC.PHONE_BATTERY_PERCENT, 
+    METRIC.HEADING, 
+    METRIC.SIGNAL_LEVEL, 
+    METRIC.CAR_BATTERY_VOLTAGE,
+    METRIC.ELECTRONICS_BATTERY_VOLTAGE
+]
+TEMP_METRICS = [
+    METRIC.MODEM_TEMP, 
+    METRIC.CAMERA_TEMP, 
+    METRIC.CPU_TEMP, 
+    METRIC.GPU_TEMP, 
+    METRIC.BATTERY_TEMP
+]
 
 class Server:
     def __init__(self, telemetry_callback):

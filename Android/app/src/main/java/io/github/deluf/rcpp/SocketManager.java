@@ -24,14 +24,7 @@ public class SocketManager {
     private static final int RECONNECT_DELAY_MS = 3000;
     private static final int SOCKET_READ_TIMEOUT_MS = 1000;
 
-    private static final int FORWARD_CMD_TO_SERIAL_THRESHOLD = 199;
-    public enum Command {
-        SWITCH_CAMERA(200);
-
-        final int value;
-        Command(int i) { this.value = i; }
-        public int getValue() { return value; }
-    }
+    private static final int CMD_SWITCH_CAMERA = 200;
 
     private final MainActivity mainActivity;
     private final String controllerIP;
@@ -138,18 +131,13 @@ public class SocketManager {
         int command = inputStream.read();
         if (command < 0) { throw new IOException("Connection closed"); }
 
-        if (command <= FORWARD_CMD_TO_SERIAL_THRESHOLD) {
+        if (command != CMD_SWITCH_CAMERA) {
             commandBytes[0] = (byte) command;
             mainActivity.microcontrollerManager.sendBytes(commandBytes);
             return;
         }
 
-        if (command == Command.SWITCH_CAMERA.getValue()) {
-            mainActivity.switchCamera();
-        }
-        else {
-            mainActivity.logMessage(LogType.ERROR, "Unknown command: " + command);
-        }
+        mainActivity.switchCamera();
     }
 
     private void scheduleVideoStreamReconnect() {

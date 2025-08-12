@@ -4,6 +4,7 @@ from printer import perror
 if shutil.which("ffmpeg") is None:
     perror("ffmpeg is not installed or not found in PATH")
 
+#from vidstab import VidStab
 import multiprocessing
 import queue
 import av
@@ -51,6 +52,7 @@ class ICON(Enum):
     SIGNAL_LOW = 6
     SIGNAL_HIGH = 7
     SIGNAL_FULL = 8
+    LIGHTNING = 9
 
 class Stream_Manager:
 
@@ -76,6 +78,8 @@ class Stream_Manager:
         self.window = None
         self.label = None
         self.frame_queue = None
+
+        #self.stabilizer = VidStab()
 
     def _get_text_size(self, text, scale=FONT_SIZE.NORMAL):
         return cv2.getTextSize(text, self.font, scale.value, self.text_thickness)[0]
@@ -125,7 +129,7 @@ class Stream_Manager:
         
         return frame
 
-    def _rc_voltage_to_percentage(self, voltage):
+    def _voltage_to_percentage(self, voltage):
         single_cell_voltage = voltage / self.num_cells_in_series
         single_cell_full = 4.2
         single_cell_empty = 3.2
@@ -204,9 +208,9 @@ class Stream_Manager:
         self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
         self._draw_icon(frame, icon, (text_x - icon_size - space, text_y - text_h//2))
 
-        # Voltage
+        # Car voltage
         voltage = self.metrics[METRIC.CAR_BATTERY_VOLTAGE]/10.0    
-        percentage = self._rc_voltage_to_percentage(voltage)
+        percentage = self._voltage_to_percentage(voltage)
 
         if percentage >= 50:
             color = (255, 255, 255)
@@ -219,7 +223,7 @@ class Stream_Manager:
                 text = "- CAR BATTERY LOW -"
                 (text_w, text_h)= self._get_text_size(text, FONT_SIZE.HUGE)
                 text_x = (w - text_w) // 2
-                text_y = (h + text_h) // 2
+                text_y = h // 2 - space
                 self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.HUGE, color)
 
         text = f"{voltage:.1f}V"
@@ -230,10 +234,38 @@ class Stream_Manager:
         self._draw_icon(frame, ICON.GAS, (padding, text_y - text_h//2))
     
         text = f"~{percentage}%"
-        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
-        text_x = padding + space
-        text_y = padding + text_h + 70
+        text_x = padding + icon_size + space + text_w + space
         self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG, color)
+
+        # Electronics voltage
+        voltage = self.metrics[METRIC.ELECTRONICS_BATTERY_VOLTAGE]/10.0    
+        percentage = self._voltage_to_percentage(voltage)
+
+        if percentage >= 50:
+            color = (255, 255, 255)
+        elif percentage >= 25:
+            color = (0, 140, 255)
+        else:
+            color = (0, 0, 180)
+            # Blinking battery low text
+            if (int(time.time()) % 2 == 0):
+                text = "- ELECTRONICS BATTERY LOW -"
+                (text_w, text_h)= self._get_text_size(text, FONT_SIZE.HUGE)
+                text_x = (w - text_w) // 2
+                text_y = h // 2 + text_h + space
+                self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.HUGE, color)
+
+        text = f"{voltage:.1f}V"
+        (text_w, text_h)= self._get_text_size(text, FONT_SIZE.BIG)
+        text_x = padding + icon_size + space
+        text_y = padding + icon_size*2 - space*2
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG)
+        self._draw_icon(frame, ICON.LIGHTNING, (padding, text_y - text_h//2))
+    
+        text = f"~{percentage}%"
+        text_x = padding + icon_size + space + text_w + space
+        self._draw_text(frame, text, (text_x, text_y), FONT_SIZE.BIG, color)
+
 
         # Heading
         text = f"- {self.metrics[METRIC.HEADING]}' -"
@@ -303,6 +335,7 @@ class Stream_Manager:
             pass
         else:
             self._add_overlays(frame)
+            #frame = self.stabilizer.stabilize_frame(input_frame=frame, smoothing_window=5) FIXME: too hot lol
 
         timed_out = time.time() - self.last_frame_time > self.no_signal_threshold_s
         if frame is None and timed_out:

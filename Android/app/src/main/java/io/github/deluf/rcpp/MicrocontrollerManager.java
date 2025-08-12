@@ -174,10 +174,18 @@ public class MicrocontrollerManager implements SerialInputOutputManager.Listener
         }
     }
 
-    // FIXME: magari dovrei mettere le variabili usate solo nell funzioni anche altrove (invece che in cima a prescindere)
     @Override
     public void onNewData(byte[] data) {
-        mainActivity.telemetryManager.onNewCarBatteryVoltage(data[0]);
+        try {
+            // MSB is set (in java bytes are signed) => electronics
+            if (data[0] < 0) {
+                data[0] &= 0x7F; // Clear MSB
+                mainActivity.telemetryManager.onNewElectronicsBatteryVoltage(data[0]);
+            }
+            // MSB is not set => car
+            else { mainActivity.telemetryManager.onNewCarBatteryVoltage(data[0]); }
+        }
+        catch (Exception ignored) { /* telemetryManager not ready yet */ }
     }
 
     @Override
