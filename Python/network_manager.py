@@ -7,7 +7,7 @@ import matplotlib
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 
-INTERFACE = "en0"     # Tailscale's interface name FIXME:
+INTERFACE = "utun7"     # Tailscale's interface name FIXME:
 REFRESH_INTERVAL_S = 0.5
 HISTORY_SECONDS_S = 30
 HISTORY_LEN = int(HISTORY_SECONDS_S / REFRESH_INTERVAL_S)
@@ -42,7 +42,7 @@ class Network_Manager:
         self.fill_tx = self.ax.fill_between(TIMES, 0, self.tx_vals, color="#0000FF", alpha=0.4)
 
         max_value = max(max(self.rx_vals), max(self.tx_vals), 0.1)
-        self.ax.set_ylim(0, max_value * 1.05)
+        self.ax.set_ylim(0, max_value * 1.1)
         
         return self.line_tx, self.line_rx, self.fill_tx, self.fill_rx
 
