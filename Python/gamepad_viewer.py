@@ -4,7 +4,6 @@ from printer import perror
 if shutil.which("npx") is None:
     perror("npx is not installed or not found in PATH")
 
-import os
 import psutil
 import subprocess
 
@@ -15,21 +14,20 @@ class Gamepad_Viewer:
     def __init__(self):
         self.background_process = None
 
-    def open_live_view(self):
-        electron_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Electron-GamepadViewer'))
-        cmd = ["npx", "electron", "."]
+    def start_mirroring(self):
+        cmd = ["npx", "electron", "gamepad_viewer"]
         try:
-            self.background_process = subprocess.Popen(cmd, cwd=electron_dir, stderr=subprocess.PIPE)
-            monitor_stderr(self.background_process, "ELECTRON")
+            self.background_process = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+            monitor_stderr(self.background_process, "GAMEPAD VIEWER")
         except Exception as e:
-            perror(f"Failed to launch GamepadViewer: {e}")
+            perror(f"Failed to launch GAMEPAD VIEWER: {e}")
 
-    def close_live_view(self):
+    def stop_mirroring(self):
         if self.background_process:
             parent = psutil.Process(self.background_process.pid)
             for child in parent.children(recursive=True):
                 child.kill()
             parent.kill()
-            print("GamepadViewer process terminated")
+            print("GAMEPAD VIEWER process terminated")
         else:
-            print("No GamepadViewer process to terminate")
+            print("No GAMEPAD VIEWER process to terminate")

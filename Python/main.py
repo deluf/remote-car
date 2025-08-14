@@ -8,7 +8,7 @@ from enum import Enum, IntEnum
 import time
 
 from server import METRIC, STREAM_METRICS, TEMP_METRICS, Server
-from map_builder import Map_Builder
+from gps_tracker import GPS_Tracker
 from stream_manager import Stream_Manager
 from printer import perror
 from gamepad_viewer import Gamepad_Viewer
@@ -89,7 +89,7 @@ def draw_temp(surface, temp_metric, position):
 
 def telemetry_callback(metric, value):
     if metric == METRIC.POSITION:
-        map_builder.add_waypoint(value[0], value[1], value[2])
+        gps_tracker.add_waypoint(value[0], value[1], value[2])
     elif metric in STREAM_METRICS:
         metrics_queue.put_nowait((metric, value))
     elif metric in TEMP_METRICS:
@@ -228,10 +228,10 @@ if __name__ == "__main__":
     PYGAME_FONT = pygame.font.SysFont(bold, 28)
 
     gamepad_viewer = Gamepad_Viewer()
-    gamepad_viewer.open_live_view()
+    gamepad_viewer.start_mirroring()
 
-    map_builder = Map_Builder()
-    map_builder.open_live_map()
+    gps_tracker = GPS_Tracker()
+    gps_tracker.open_live_map()
 
     network_manager = Network_Manager()
     network_manager.open_live_view()
@@ -248,8 +248,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
 
-    gamepad_viewer.close_live_view()
-    map_builder.close_live_map()
+    gamepad_viewer.stop_mirroring()
+    gps_tracker.close_live_map()
     network_manager.close_live_view()
     video_stream.close()
     pygame.quit()
