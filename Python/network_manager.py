@@ -7,9 +7,10 @@ import matplotlib
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 
-INTERFACE = "utun7"     # Tailscale's interface name FIXME:
+INTERFACE = "utun10" # Tailscale's interface name
 REFRESH_INTERVAL_S = 0.5
 HISTORY_SECONDS_S = 30
+
 HISTORY_LEN = int(HISTORY_SECONDS_S / REFRESH_INTERVAL_S)
 TIMES = [i * REFRESH_INTERVAL_S for i in range(-HISTORY_LEN + 1, 0 + 1)]
 
@@ -91,16 +92,18 @@ class Network_Manager:
         _ = animation.FuncAnimation(self.fig, self._update_plot, interval=REFRESH_INTERVAL_S*1000, blit=False, save_count=HISTORY_LEN)
         plt.show()
 
-    def open_live_view(self):
+    def start_monitoring(self):
         if self.process and self.process.is_alive():
-            print("Network manager already started")
+            print("NETWORK MANAGER process already launched")
             return
         self.process = multiprocessing.Process(target=self._start)
         self.process.start()
-        print("Network manager started")
+        print("NETWORK MANAGER process launched")
 
-    def close_live_view(self):
+    def stop_monitoring(self):
         if self.process:
             self.process.terminate()
             self.process = None
-        print("Network manager stopped")
+            print("NETWORK MANAGER process terminated")
+        else:
+            print("No NETWORK MANAGER process to terminate")

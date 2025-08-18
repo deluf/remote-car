@@ -53,7 +53,7 @@ class Server:
             self.control_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.control_socket.bind((self.host, self.control_port))
             self.control_socket.listen(1)
-            print(f"Control server listening on TCP {self.host}:{self.control_port}")
+            print(f"CONTROL SERVER thread listening on TCP {self.host}:{self.control_port}")
         except Exception as e:
             perror(f"Failed to start the control server: {e}")
         
@@ -143,16 +143,13 @@ class Server:
 
     def stop(self):
         self.running = False
-        
         if self.control_client:
             self.control_client.close()
             self.control_client = None
-                
         if self.control_socket:
             self.control_socket.close()
             self.control_socket = None
-                    
-        print("Server stopped")
+        print("CONTROL SERVER thread terminated")
 
     def start(self):
         self.running = True
@@ -160,3 +157,4 @@ class Server:
            target=self.start_control_server, 
            daemon=True
         ).start()
+        print("CONTROL SERVER thread launched")

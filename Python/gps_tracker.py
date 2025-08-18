@@ -105,10 +105,13 @@ class GPS_Tracker:
         self.map.save(MAP_PATH)
 
     def open_live_map(self):
+        #if self.background_process:
+            # FIXME: ANCHEALtRO
         cmd = ["npx", "electron", "gps_tracker"]
         try:
             self.background_process = subprocess.Popen(cmd, stderr=subprocess.PIPE)
             monitor_stderr(self.background_process, "GPS TRACKER")
+            print("GPS TRACKER process launched")
         except Exception as e:
             perror(f"Failed to launch GPS TRACKER: {e}")
 

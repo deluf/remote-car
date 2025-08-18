@@ -421,15 +421,15 @@ class Stream_Manager:
 
     def play(self):
         if self.process and self.process.is_alive():
-            print("Stream already started")
+            print("STREAM MANAGER process already launched")
             return
 
         self.process = multiprocessing.Process(target=self._start)
         self.process.start()
-        print("Stream started")
+        print("STREAM MANAGER process launched")
 
     def close(self):
         if self.process:
             self.process.terminate()
             self.process = None
-        print("Stream terminated (PyQt)")
+        print("STREAM MANAGER process terminated")

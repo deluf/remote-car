@@ -1,6 +1,7 @@
 
 import os
 os.environ['SDL_VIDEO_WINDOW_POS'] = "0,0"
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
 
 import multiprocessing
 import pygame
@@ -51,7 +52,7 @@ class COMMAND(IntEnum):
 COMMAND_INTENSITY_MAX = 50
 
 FPS = 30
-STICK_DEADZONE = 0.05
+STICK_DEADZONE = 0.75
 TRIGGER_DEADZONE = 0.01
 
 #FIXME: color anche le max, magari aggiungi host temp
@@ -115,9 +116,7 @@ def calculate_steer_intensity(level):
     if abs(level) > 1 - STICK_DEADZONE:
         return COMMAND_INTENSITY_MAX - 1
     
-    # -1 <-> 0 and 0 <-> 1 both remapped to 0 <-> 49
-    level_percent = abs(level)
-    return round(level_percent * (COMMAND_INTENSITY_MAX - 1))
+    return COMMAND_INTENSITY_MAX - 1
 
 # State tracking for bandwidth optimization
 last_sent_states = { direction: 0 for direction in COMMAND }
@@ -148,19 +147,15 @@ def ui_loop():
                 if button == DS4_DIGITAL.TOUCHPAD:
                     return
                 elif button == DS4_DIGITAL.TRIANGLE:
-                    print(f"Button {DS4_DIGITAL(event.button).name} pressed")
                     server.send_command(COMMAND.SWITCH_CAMERA.to_bytes(1))
                     video_stream.switch()
                 elif button == DS4_DIGITAL.SQUARE:
-                    print(f"Button {DS4_DIGITAL(event.button).name} pressed")
                     server.send_command(COMMAND.TOGGLE_NEON.to_bytes(1))
                 elif button == DS4_DIGITAL.X:
-                    print(f"Button {DS4_DIGITAL(event.button).name} pressed")
                     server.send_command(COMMAND.TOGGLE_CLACSON.to_bytes(1))
 
             elif event.type == pygame.JOYBUTTONUP:
                 if button == DS4_DIGITAL.X:
-                    print(f"Button {DS4_DIGITAL(event.button).name} released")
                     server.send_command(COMMAND.TOGGLE_CLACSON.to_bytes(1))
 
             elif event.type == pygame.JOYAXISMOTION:
@@ -186,10 +181,10 @@ def ui_loop():
 
             elif event.type == pygame.JOYDEVICEADDED:
                 joystick = pygame.joystick.Joystick(event.device_index)
-                print(f"Joystick {joystick.get_name()} connencted")
+                print(f"{joystick.get_name()} connencted")
 
             elif event.type == pygame.JOYDEVICEREMOVED:
-                print(f"Joystick {joystick.get_name()} disconnected")
+                print(f"{joystick.get_name()} disconnected")
                 joystick = None
         
         if not has_focus:
@@ -234,7 +229,7 @@ if __name__ == "__main__":
     gps_tracker.open_live_map()
 
     network_manager = Network_Manager()
-    network_manager.open_live_view()
+    network_manager.start_monitoring()
 
     server = Server(telemetry_callback)
     server.start()
@@ -250,7 +245,7 @@ if __name__ == "__main__":
 
     gamepad_viewer.stop_mirroring()
     gps_tracker.close_live_map()
-    network_manager.close_live_view()
+    network_manager.stop_monitoring()
     video_stream.close()
     pygame.quit()
 
