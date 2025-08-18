@@ -53,8 +53,8 @@ const float RESISTOR_RATIO_ELECTRONICS = (R1_ELECTRONICS + R2_ELECTRONICS) / R2_
 #define RIGHT_LEFT_SPLIT_POINT 150
 #define INTENSITY_MAX 50 // Maximum intensity of each movement
 
-unsigned long time_since_reading;
-int last_direction = STEER_LEFT_PIN;
+unsigned long time_since_voltage_reading;
+int last_steer_pin;
 
 float read_car_battery_voltage()
 {
@@ -100,40 +100,15 @@ void setup()
 
 void loop()
 {
-	analogWrite(STEER_PWM_PIN, 225);
-
-	delay(3000);
-
-	digitalWrite(STEER_RIGHT_PIN, HIGH);
-	delay(500);
-	digitalWrite(STEER_RIGHT_PIN, LOW);
-	digitalWrite(STEER_LEFT_PIN, HIGH);
-	delay(10);
-	digitalWrite(STEER_LEFT_PIN, LOW);
-
-	delay(3000);
-
-	digitalWrite(STEER_LEFT_PIN, HIGH);
-	delay(500);
-	digitalWrite(STEER_LEFT_PIN, LOW);
-	digitalWrite(STEER_RIGHT_PIN, HIGH);
-	delay(10);
-	digitalWrite(STEER_RIGHT_PIN, LOW);
-
-
-	analogWrite(STEER_PWM_PIN, 0);
-	while(1) {;}
-
-
 	unsigned long current_time = millis();
-	if (current_time - time_since_reading > VOLTAGE_UPDATE_INTERVAL_MS)
+	if (current_time - time_since_voltage_reading > VOLTAGE_UPDATE_INTERVAL_MS)
 	{
 		unsigned int available_bytes = Serial.availableForWrite();
 		if (available_bytes >= 2) 
 		{
 			float car_battery_volt = read_car_battery_voltage();
 			float electronics_battery_volt = read_electronics_battery_voltage();
-			time_since_reading = millis();
+			time_since_voltage_reading = millis();
 
 			/**
 			 * The theoretical maximum voltage for a 2S lithium ion battery is 8.4 volts
@@ -175,32 +150,31 @@ void loop()
 	uint8_t	pwm_speed = (intensity == 0) ? 0 : round(intensity_percent * (PWM_MAX - PWM_MIN)) + PWM_MIN;
 	if (cmd_byte < 100) 
 	{
-		// 0 <= cmd_byte < 100
+		// 0 <= cmd_byte < 100 : MARCH
 		analogWrite(MARCH_PWM_PIN, pwm_speed);
 		digitalWrite(MARCH_FORWARD_PIN, cmd_byte < FORWARD_BACKWARD_SPLIT_POINT ? HIGH : LOW);
 		digitalWrite(MARCH_BACKWARDS_PIN, cmd_byte >= FORWARD_BACKWARD_SPLIT_POINT ? HIGH : LOW);
 	}
 	else if (cmd_byte < 200) 
 	{
-		// 100 <= cmd_byte < 200
+		// 100 <= cmd_byte < 200 : STEER
 		// For physical constraints of the steering mechanism, we currently always steer all the way
-		// We set a generous deadzone of 64/255
-		pwm_speed = pwm_speed > 64 ? PWM_MAX : 0;
-		analogWrite(STEER_PWM_PIN, pwm_speed);
-
-		int steer_pin = cmd_byte < RIGHT_LEFT_SPLIT_POINT ? STEER_RIGHT_PIN : STEER_LEFT_PIN;
-		digitalWrite(steer_pin, HIGH);
-
-		// If the desired speed is 0 (drive straight) briefly counter steer
-		//  to mitigate the imperfections of the steering mechanism
-		if (pwm_speed == 0) 
+		if (pwm_speed > 0) 
 		{
-			digitalWrite(steer_pin, LOW);
 			analogWrite(STEER_PWM_PIN, 255);
-			int counter_steer_pin = steer_pin == STEER_RIGHT_PIN ? STEER_LEFT_PIN : STEER_RIGHT_PIN;
+			last_steer_pin = cmd_byte < RIGHT_LEFT_SPLIT_POINT ? STEER_RIGHT_PIN : STEER_LEFT_PIN;
+			digitalWrite(last_steer_pin, HIGH);
+		}
+		else 
+		{
+			// If the desired speed is 0 (drive straight) briefly counter steer
+			//  to mitigate the imperfections of the steering mechanism
+			digitalWrite(last_steer_pin, LOW);
+			int counter_steer_pin = last_steer_pin == STEER_RIGHT_PIN ? STEER_LEFT_PIN : STEER_RIGHT_PIN;
 			digitalWrite(counter_steer_pin, HIGH);
-			delay(5);
+			delay(10);
 			digitalWrite(counter_steer_pin, LOW);
+			analogWrite(STEER_PWM_PIN, 0);
 		}
 	}
 }
