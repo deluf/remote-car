@@ -70,7 +70,7 @@ class Stream_Manager:
         # cv2.IMREAD_UNCHANGED ensures alpha channel is loaded properly
         self.icons = { icon: cv2.imread(f"icons/{icon.name.lower()}.png", cv2.IMREAD_UNCHANGED) for icon in ICON}
 
-        # Shared state between processes FIXME:
+        # Shared state between processes
         self.lens_facing_shared = multiprocessing.Value('i', LENS_FACING.FRONT.value)
 
         # GUI placeholders (set in _start)
@@ -335,8 +335,7 @@ class Stream_Manager:
             pass
         else:
             self._add_overlays(frame)
-            #frame = self.stabilizer.stabilize_frame(input_frame=frame, smoothing_window=5) FIXME: too hot lol
-
+            
         timed_out = time.time() - self.last_frame_time > self.no_signal_threshold_s
         if frame is None and timed_out:
             frame = self._create_no_signal_frame()
@@ -413,7 +412,7 @@ class Stream_Manager:
                 pass
 
     def switch(self):
-        # FIXME: thrash
+        # TODO: fix this garbage
         current_value = self.lens_facing_shared.value
         new_value = LENS_FACING.BACK.value if current_value == LENS_FACING.FRONT.value else LENS_FACING.FRONT.value
         self.lens_facing_shared.value = new_value

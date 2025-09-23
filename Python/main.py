@@ -55,7 +55,7 @@ FPS = 30
 STICK_DEADZONE = 0.75
 TRIGGER_DEADZONE = 0.01
 
-#FIXME: color anche le max, magari aggiungi host temp
+#TODO: colora anche le max, poi magari aggiungi la host cpu temp
 red_limit = {
     METRIC.MODEM_TEMP: 60,
     METRIC.CAMERA_TEMP: 60,
@@ -204,18 +204,6 @@ def ui_loop():
         clock.tick(FPS)
         
 if __name__ == "__main__":
-
-    if False:
-        import subprocess
-        applescript = '''
-        tell application "iTerm2"
-            tell current window
-                set bounds to {1058, 600, 1440, 900} -- {left, top, right, bottom}
-            end tell
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", applescript])
-
     pygame.init()
 
     normal = "mx437ibmdosiso8"
@@ -248,15 +236,5 @@ if __name__ == "__main__":
     network_manager.stop_monitoring()
     video_stream.close()
     pygame.quit()
-
-    if False:
-        applescript = '''
-        tell application "iTerm2"
-            tell current window
-                set bounds to {0, 0, 1440, 900} -- {left, top, right, bottom}
-            end tell
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", applescript])
-
+    
     print("Done")

@@ -105,8 +105,6 @@ class GPS_Tracker:
         self.map.save(MAP_PATH)
 
     def open_live_map(self):
-        #if self.background_process:
-            # FIXME: ANCHEALtRO
         cmd = ["npx", "electron", "gps_tracker"]
         try:
             self.background_process = subprocess.Popen(cmd, stderr=subprocess.PIPE)

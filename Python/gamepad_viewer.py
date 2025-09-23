@@ -19,7 +19,7 @@ class Gamepad_Viewer:
         try:
             self.background_process = subprocess.Popen(cmd, stderr=subprocess.PIPE)
             monitor_stderr(self.background_process, "GAMEPAD VIEWER")
-            print("GAMEPAD VIEWER process launched") # FIXME: anche nella'ltro
+            print("GAMEPAD VIEWER process launched")
         except Exception as e:
             perror(f"Failed to launch GAMEPAD VIEWER: {e}")
 
