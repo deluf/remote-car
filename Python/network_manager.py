@@ -1,95 +1,105 @@
-
-import multiprocessing
-import psutil
-import time
 import collections
+import multiprocessing
+import time
 import matplotlib
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
+import psutil
 
-INTERFACE = "utun10" # Tailscale's interface name
-REFRESH_INTERVAL_S = 0.5
-HISTORY_SECONDS_S = 30
+# Use non-interactive backend for background plotting window
+INTERFACE = "utun6" # Tailscale interface name
+REFRESH_INTERVAL = 0.5
+HISTORY_SECONDS = 30
 
-HISTORY_LEN = int(HISTORY_SECONDS_S / REFRESH_INTERVAL_S)
-TIMES = [i * REFRESH_INTERVAL_S for i in range(-HISTORY_LEN + 1, 0 + 1)]
+HISTORY_LEN = int(HISTORY_SECONDS / REFRESH_INTERVAL)
+TIMES = [i * REFRESH_INTERVAL for i in range(-HISTORY_LEN + 1, 1)]
 
-class Network_Manager:
-
+class NetworkManager:
     def __init__(self):
         self.process = None
 
     def _update_plot(self, _):
-        latest_io_counters_time = time.time()
-        latest_io_counters = psutil.net_io_counters(pernic=True)[INTERFACE]
-        delta_time = latest_io_counters_time - self.previous_io_counters_time
+        now = time.time()
+        try:
+            counters = psutil.net_io_counters(pernic=True)[INTERFACE]
+        except KeyError:
+            # Interface not found, log 0
+            self.rx_vals.append(0)
+            self.tx_vals.append(0)
+            return self.line_tx, self.line_rx, self.fill_tx, self.fill_rx
 
-        rx_Mbps = (latest_io_counters.bytes_recv - self.previous_io_counters.bytes_recv) / delta_time / 1024 / 1024 * 8
-        tx_Mbps = (latest_io_counters.bytes_sent - self.previous_io_counters.bytes_sent) / delta_time / 1024 / 1024 * 8
+        delta = now - self.prev_time
+        if delta <= 0:
+            delta = 0.001
 
-        self.rx_vals.append(rx_Mbps)
-        self.tx_vals.append(tx_Mbps)
+        # Calculate throughput in Mbps
+        rx_mbps = (counters.bytes_recv - self.prev_counters.bytes_recv) / delta / 1024 / 1024 * 8
+        tx_mbps = (counters.bytes_sent - self.prev_counters.bytes_sent) / delta / 1024 / 1024 * 8
 
-        self.previous_io_counters = latest_io_counters
-        self.previous_io_counters_time = latest_io_counters_time
+        self.rx_vals.append(rx_mbps)
+        self.tx_vals.append(tx_mbps)
+
+        self.prev_counters = counters
+        self.prev_time = now
 
         self.line_tx.set_data(TIMES, self.tx_vals)
         self.line_rx.set_data(TIMES, self.rx_vals)
-        
-        # Remove old fills
-        for coll in [self.fill_rx, self.fill_tx]:
-            coll.remove()
+
+        # Recreate polygon fills for plot
+        self.fill_rx.remove()
+        self.fill_tx.remove()
         self.fill_rx = self.ax.fill_between(TIMES, 0, self.rx_vals, color="#FF0000", alpha=0.4)
         self.fill_tx = self.ax.fill_between(TIMES, 0, self.tx_vals, color="#0000FF", alpha=0.4)
 
-        max_value = max(max(self.rx_vals), max(self.tx_vals), 0.1)
-        self.ax.set_ylim(0, max_value * 1.1)
-        
+        max_val = max(max(self.rx_vals), max(self.tx_vals), 0.1)
+        self.ax.set_ylim(0, max_val * 1.1)
+
         return self.line_tx, self.line_rx, self.fill_tx, self.fill_rx
 
     def _start(self):
         matplotlib.use("TkAgg")
 
-        self.rx_vals = collections.deque([0] * HISTORY_LEN, maxlen=HISTORY_LEN)
-        self.tx_vals = collections.deque([0] * HISTORY_LEN, maxlen=HISTORY_LEN)
+        self.rx_vals = collections.deque([0.0] * HISTORY_LEN, maxlen=HISTORY_LEN)
+        self.tx_vals = collections.deque([0.0] * HISTORY_LEN, maxlen=HISTORY_LEN)
 
-        plt.rc('font', family='serif')
-        plt.rc('font', size=10)
-        #plt.rcParams["figure.figsize"] = (, 6)
-
+        plt.rc('font', family='serif', size=10)
         self.fig, self.ax = plt.subplots()
-        ax = self.ax
-        fig = self.fig
 
-        self.line_tx, = ax.plot([], [], label="TX", linewidth=1, color="#0000FF")
-        self.line_rx, = ax.plot([], [], label="RX", linewidth=1, color="#FF0000")
-        self.fill_tx = ax.fill_between(TIMES, 0, self.tx_vals, color="#0000FF", alpha=0.4)
-        self.fill_rx = ax.fill_between(TIMES, 0, self.rx_vals, color="#FF0000", alpha=0.4)
+        self.line_tx, = self.ax.plot([], [], label="TX", linewidth=1, color="#0000FF")
+        self.line_rx, = self.ax.plot([], [], label="RX", linewidth=1, color="#FF0000")
+        self.fill_tx = self.ax.fill_between(TIMES, 0, self.tx_vals, color="#0000FF", alpha=0.4)
+        self.fill_rx = self.ax.fill_between(TIMES, 0, self.rx_vals, color="#FF0000", alpha=0.4)
 
-        fig.subplots_adjust(left=0.14, right=0.96, top=0.96, bottom=0.14)
-        ax.margins(0)
-        ax.set_xlim(-HISTORY_SECONDS_S, 0)
+        self.fig.subplots_adjust(left=0.14, right=0.96, top=0.96, bottom=0.14)
+        self.ax.margins(0)
+        self.ax.set_xlim(-HISTORY_SECONDS, 0)
         plt.legend(loc='upper left', fancybox=False, edgecolor="black")
-        ax.set_xlabel("Time [s]", labelpad=0)
-        ax.set_ylabel("Throughput [Mbps]", labelpad=0)
-        ax.tick_params(direction="in", length=2.5, width=1)
-        ax.grid(alpha=0.5)
+        self.ax.set_xlabel("Time [s]", labelpad=0)
+        self.ax.set_ylabel("Throughput [Mbps]", labelpad=0)
+        self.ax.tick_params(direction="in", length=2.5, width=1)
+        self.ax.grid(alpha=0.5)
 
-        self.previous_io_counters = psutil.net_io_counters(pernic=True)[INTERFACE]
-        self.previous_io_counters_time = time.time()
+        try:
+            self.prev_counters = psutil.net_io_counters(pernic=True)[INTERFACE]
+        except KeyError:
+            # Fallback if interface is missing
+            self.prev_counters = collections.namedtuple('IOCounters', ['bytes_recv', 'bytes_sent'])(0, 0)
+        self.prev_time = time.time()
 
-        # Remove matplotlib's toolbar
+        # Configure borderless topmost matplotlib window
         manager = plt.get_current_fig_manager()
         if hasattr(manager, 'toolbar') and manager.toolbar is not None:
             manager.toolbar.pack_forget()
 
-        manager.window.overrideredirect(True)       # Borderless
-        #manager.window.geometry("382x300+1112+300") # Set starting position
-        manager.window.geometry(f"382x300+0+{900-300}") # Set starting position
-        manager.window.attributes('-topmost', True) # Always on top
+        # Tkinter window settings
+        manager.window.overrideredirect(True)
+        manager.window.geometry("382x300+0+600")
+        manager.window.attributes('-topmost', True)
 
-        # It's required to keep in memory the returned value of FuncAnimation before calling plt.show()
-        _ = animation.FuncAnimation(self.fig, self._update_plot, interval=REFRESH_INTERVAL_S*1000, blit=False, save_count=HISTORY_LEN)
+        # Store animation object to prevent it from being garbage collected
+        self.anim = animation.FuncAnimation(
+            self.fig, self._update_plot, interval=int(REFRESH_INTERVAL * 1000), blit=False, save_count=HISTORY_LEN
+        )
         plt.show()
 
     def start_monitoring(self):

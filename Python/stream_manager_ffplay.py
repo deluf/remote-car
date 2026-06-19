@@ -1,14 +1,12 @@
-
 import shutil
-from printer import perror
-if shutil.which("ffplay") is None:
-    perror("ffplay is not installed or not found in PATH")
-
 import subprocess
-import psutil
 from enum import Enum
 from pathlib import Path
-from printer import monitor_stderr
+import psutil
+from printer import perror, monitor_stderr
+
+if shutil.which("ffplay") is None:
+    perror("ffplay is not installed or not found in PATH")
 
 # Stream parameters
 ORIGINAL_STREAM_WIDTH = 320
@@ -24,13 +22,9 @@ FONT_NORMAL = "/Users/fra/Library/Fonts/Mx437_IBM_DOS_ISO8.ttf"
 
 SCALED_WIDTH = SCREEN_HEIGHT / ORIGINAL_STREAM_WIDTH * ORIGINAL_STREAM_HEIGHT
 
-class LENS_FACING(Enum):
+class LensFacing(Enum):
     FRONT = 0
     BACK = 1
-
-# Possible unused flags:
-#  -fast
-#  -sync video
 
 INPUT_FLAGS = [
     "-loglevel", "error",
@@ -39,24 +33,18 @@ INPUT_FLAGS = [
     "-framedrop",
     "-f", "h264",
     "-framerate", f"{FRAMERATE}",
-    # Disable the audio (streamed separately)
-    "-an", 
+    "-an", # Disable the audio
     "-noborder",
     "-alwaysontop",
-    # Position the stream in the center of the screen
-    "-left", f"{(SCREEN_WIDTH - SCALED_WIDTH)//2}",
+    "-left", f"{int((SCREEN_WIDTH - SCALED_WIDTH) // 2)}", # Center on screen
     "-top", "0",
-    "-i", f"udp://0.0.0.0:{UDP_PORT}"   
+    "-i", f"udp://0.0.0.0:{UDP_PORT}"
 ]
 
 VIDEO_FILTERS = [
-    # 90° rotation clockwise
-    "transpose=1",
-
-    # Scale the stream to fit the entire screen height
-    f"scale={SCALED_WIDTH}:{SCREEN_HEIGHT}",
-
-    # Auto-updating FRONT/BACK camera text
+    "transpose=1", # 90 degree rotation clockwise
+    f"scale={int(SCALED_WIDTH)}:{SCREEN_HEIGHT}", # Scale to fit screen height
+    # Auto-updating camera source text
     f"drawtext=fontfile={FONT_BOLD}:"
     "textfile=/tmp/camera_source.ffplayvf:"
     "fontsize=h/25:"
@@ -66,53 +54,49 @@ VIDEO_FILTERS = [
     "x=(w-text_w)/2:"
     "y=20:"
     "reload=5:",
-
     # Auto-updating timestamp
     f"drawtext='fontfile={FONT_NORMAL}:"
-    r"text=%{localtime\:%-d %b %Y %X}':" # strftime style 
+    r"text=%{localtime\:%-d %b %Y %X}':"
     "fontsize=h/30:"
     "fontcolor=white:"
     "x=w-text_w-10:"
-    "y=h-text_h-10",
+    "y=h-text_h-10"
 ]
 
-CMD = (
-    ["ffplay"] + 
-    INPUT_FLAGS + 
-    ["-vf"] +
-    [",".join(VIDEO_FILTERS)]
-)
+CMD = ["ffplay"] + INPUT_FLAGS + ["-vf", ",".join(VIDEO_FILTERS)]
 
-class Stream_Manager:
-
+class StreamManagerFFplay:
     def __init__(self):
-        self.background_process = None
-        self.lens_facing = LENS_FACING.FRONT
-
-        # Initialize the files referenced in the video filters
+        self.process = None
+        self.lens_facing = LensFacing.FRONT
         self.camera_source_file = Path("/tmp/camera_source.ffplayvf")
         self.camera_source_file.write_text(f"{self.lens_facing.name} CAMERA")
 
     def play(self):
-        if self.background_process:
-            print(f"Stream already launched")
+        if self.process:
+            print("Stream already launched")
             return
         try:
-            self.background_process = subprocess.Popen(CMD, stderr=subprocess.PIPE, text=True)
-            monitor_stderr(self.background_process, "FFPLAY")
+            self.process = subprocess.Popen(CMD, stderr=subprocess.PIPE, text=True)
+            monitor_stderr(self.process, "FFPLAY")
         except Exception as e:
             perror(f"Failed to play the stream: {e}")
 
     def switch(self):
-        self.lens_facing = LENS_FACING.FRONT if self.lens_facing == LENS_FACING.BACK else LENS_FACING.BACK
+        self.lens_facing = LensFacing.FRONT if self.lens_facing == LensFacing.BACK else LensFacing.BACK
         self.camera_source_file.write_text(f"{self.lens_facing.name} CAMERA")
 
     def close(self):
-        if self.background_process:
-            parent = psutil.Process(self.background_process.pid)
+        if not self.process:
+            print("No stream process to terminate")
+            return
+        try:
+            parent = psutil.Process(self.process.pid)
             for child in parent.children(recursive=True):
                 child.kill()
             parent.kill()
-            print(f"Stream process terminated")
-        else:
-            print(f"No stream process to terminate")
+            print("Stream process terminated")
+        except psutil.NoSuchProcess:
+            print("Stream process already dead")
+        finally:
+            self.process = None

@@ -1,0 +1,23 @@
+fare una long run sia acceso che spento schermo
+    stabilizzatori laterali per il corpo
+    sospensioni dietro troppo dure
+
+really? check: possiamo switchare cam anche se non è ancora startata l'app lol
+camera e non si flippa più di due volte (technical debt anche all'avvio)
+camera error 3 after a while???
+
+SHOULD:
+    audio in ricezione    
+    uniformare l'uso di public    
+    mandare tutti i gps e disegnare nuovo cerchio sse raggio non interseca
+
+COULD:
+    night vision effect
+    le autorizzazioni per telefono, posizione e microfono vanno date a mano nella ui di sistema?
+    audio in trasmissione
+    lightsensore che accedne i fari
+        CMD.TAKE_PICTURE
+        CMD.START_RECORDING
+        CMD.STOP_RECORDING
+    fixare che funziona solo quando starto la stream DOPO
+
